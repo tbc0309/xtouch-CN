@@ -72,11 +72,17 @@ String xtouch_mqtt_parse_printer_type(String type_str)
     return "";
 }
 
+// Printer payloads are external input; never let names or IDs overrun state.
+template <size_t N>
+static void xtouch_mqtt_copy(char (&target)[N], const char *source) {
+    strlcpy(target, source ? source : "", N);
+}
+
 void xtouch_mqtt_update_slice_info(const char *project_id, const char *profile_id, const char *subtask_id, int plate_idx)
 {
-    strcpy(bambuStatus.project_id_, project_id);
-    strcpy(bambuStatus.profile_id_, profile_id);
-    strcpy(bambuStatus.subtask_id_, subtask_id);
+    xtouch_mqtt_copy(bambuStatus.project_id_, project_id);
+    xtouch_mqtt_copy(bambuStatus.profile_id_, profile_id);
+    xtouch_mqtt_copy(bambuStatus.subtask_id_, subtask_id);
 }
 
 void xtouch_mqtt_processPushStatus(JsonDocument &incomingJson)
@@ -91,11 +97,11 @@ void xtouch_mqtt_processPushStatus(JsonDocument &incomingJson)
 
         if (incomingJson["print"].containsKey("print_type"))
         {
-            strcpy(bambuStatus.print_type, incomingJson["print"]["print_type"]);
+            xtouch_mqtt_copy(bambuStatus.print_type, incomingJson["print"]["print_type"]);
         }
         if (incomingJson["print"].containsKey("home_flag"))
         {
-            bambuStatus.home_flag, incomingJson["print"]["home_flag"].as<int>();
+            bambuStatus.home_flag = incomingJson["print"]["home_flag"].as<int>();
         }
 
         if (incomingJson["print"].containsKey("hw_switch_state"))
@@ -180,12 +186,12 @@ void xtouch_mqtt_processPushStatus(JsonDocument &incomingJson)
         // #pragma region print_task
         if (incomingJson["print"].containsKey("printer_type"))
         {
-            strcpy(bambuStatus.printer_type, xtouch_mqtt_parse_printer_type(incomingJson["print"]["printer_type"].as<String>()).c_str());
+            xtouch_mqtt_copy(bambuStatus.printer_type, xtouch_mqtt_parse_printer_type(incomingJson["print"]["printer_type"].as<String>()).c_str());
         }
 
         if (incomingJson["print"].containsKey("subtask_name"))
         {
-            strcpy(bambuStatus.subtask_name, incomingJson["print"]["subtask_name"]);
+            xtouch_mqtt_copy(bambuStatus.subtask_name, incomingJson["print"]["subtask_name"]);
         }
 
         if (incomingJson["print"].containsKey("layer_num"))
@@ -210,12 +216,12 @@ void xtouch_mqtt_processPushStatus(JsonDocument &incomingJson)
 
         if (incomingJson["print"].containsKey("task_id"))
         {
-            strcpy(bambuStatus.task_id, incomingJson["print"]["task_id"]);
+            xtouch_mqtt_copy(bambuStatus.task_id, incomingJson["print"]["task_id"]);
         }
 
         if (incomingJson["print"].containsKey("gcode_file"))
         {
-            strcpy(bambuStatus.gcode_file, incomingJson["print"]["gcode_file"]);
+            xtouch_mqtt_copy(bambuStatus.gcode_file, incomingJson["print"]["gcode_file"]);
         }
 
         if (incomingJson["print"].containsKey("gcode_file_prepare_percent"))
@@ -230,7 +236,7 @@ void xtouch_mqtt_processPushStatus(JsonDocument &incomingJson)
         if (incomingJson["print"].containsKey("project_id") && incomingJson["print"].containsKey("profile_id") && incomingJson["print"].containsKey("subtask_id"))
         {
             String obj_subtask_id_string = incomingJson["print"]["subtask_id"].as<String>();
-            strcpy(bambuStatus.obj_subtask_id, obj_subtask_id_string.c_str());
+            xtouch_mqtt_copy(bambuStatus.obj_subtask_id, obj_subtask_id_string.c_str());
 
             int plate_index = -1;
             /* parse local plate_index from task */
@@ -239,7 +245,7 @@ void xtouch_mqtt_processPushStatus(JsonDocument &incomingJson)
                 if (incomingJson["print"].containsKey("gcode_file"))
                 {
                     String gcode_file_string = incomingJson["print"]["gcode_file"].as<String>();
-                    strcpy(bambuStatus.gcode_file, incomingJson["print"]["gcode_file"]);
+                    xtouch_mqtt_copy(bambuStatus.gcode_file, incomingJson["print"]["gcode_file"]);
 
                     int idx_start = gcode_file_string.lastIndexOf("_") + 1;
                     int idx_end = gcode_file_string.lastIndexOf(".");
@@ -252,7 +258,7 @@ void xtouch_mqtt_processPushStatus(JsonDocument &incomingJson)
             }
             xtouch_mqtt_update_slice_info(incomingJson["print"]["project_id"], incomingJson["print"]["profile_id"], incomingJson["print"]["subtask_id"], plate_index);
 
-            strcpy(bambuStatus.task_id, incomingJson["print"]["subtask_id"]);
+            xtouch_mqtt_copy(bambuStatus.task_id, incomingJson["print"]["subtask_id"]);
         }
         // #pragma region print_task
 
@@ -643,7 +649,8 @@ void xtouch_mqtt_parseMessage(char *topic, byte *payload, unsigned int length, b
             else if (command == "gcode_line")
             {
                 ConsoleDebug.println(F("[XTouch][MQTT] gcode_line ack"));
-                ConsoleDebug.println(String((char *)payload));
+                ConsoleDebug.write(payload, length);
+                ConsoleDebug.println();
             }
 
             // project_file

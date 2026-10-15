@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include "xtouch/debug.h"
 #include "xtouch/paths.h"
+#include "xtouch/storage.h"
 #include "xtouch/eeprom.h"
 #include "xtouch/types.h"
 #include "xtouch/bblp.h"
@@ -39,12 +40,28 @@ void setup()
   Serial.begin(115200);
 #endif
 
-  xtouch_eeprom_setup();
+  bool storageReady = xtouch_storage_begin();
+  if (storageReady) xtouch_eeprom_setup();
   xtouch_globals_init();
   xtouch_screen_setup();
   xtouch_intro_show();
-  while (!xtouch_sdcard_setup())
-    ;
+  while (!storageReady) {
+    lv_label_set_text(introScreenCaption, XTOUCH_TEXT_STORAGE_ERROR);
+    lv_timer_handler();
+    delay(100);
+  }
+  xtouch_sdcard_setup();
+  xtouch_storage_sync();
+  // A recovery card containing only firmware.bin must not be blocked by
+  // missing Wi-Fi/printer provisioning on an uninitialized device.
+  if (!xtouch_storage_has(xtouch_paths_config)) xtouch_firmware_checkFirmwareUpdate();
+  while (!xtouch_storage_has(xtouch_paths_config)) {
+    lv_label_set_text(introScreenCaption, XTOUCH_TEXT_INITIAL_CONFIG);
+    lv_timer_handler();
+    xtouch_sdcard_poll(false);
+    xtouch_firmware_checkFirmwareUpdate();
+    delay(20);
+  }
 
   xtouch_coldboot_check();
 
@@ -56,6 +73,9 @@ void setup()
 
   while (!xtouch_wifi_setup())
     ;
+
+  // Non-blocking time synchronization also dates changes when OTA is disabled.
+  xtouch_start_clock_sync();
 
   xtouch_firmware_checkOnlineFirmwareUpdate();
 
@@ -79,4 +99,16 @@ void loop()
     loadScreen(4);
   }
   xtouch_mqtt_loop();
+  static bool clockReady = false;
+  if (!clockReady && time(NULL) > 1577836800) {
+    xtouch_storage_clock_ready();
+    xtouch_storage_sync(true);
+    clockReady = true;
+  }
+  xtouch_sdcard_poll();
+  if (xtouch_storage_restart_required() || xtouch_sdcard_firmware_waiting) {
+    // Imported configuration is applied as one consistent boot snapshot.
+    delay(200);
+    ESP.restart();
+  }
 }

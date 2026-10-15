@@ -48,25 +48,12 @@ ScreenPoint getScreenCoords(int16_t x, int16_t y)
 
 void xtouch_loadTouchConfig(XTouchPanelConfig &config)
 {
-    // Open file for reading
-    File file = xtouch_filesystem_open(SD, xtouch_paths_touch);
-
-    // Allocate a temporary JsonDocument
-    // Don't forget to change the capacity to match your requirements.
-    // Use arduinojson.org/v6/assistant to compute the capacity.
-    StaticJsonDocument<512> doc;
-
-    // Deserialize the JSON document
-    DeserializationError error = deserializeJson(doc, file);
-    if (error)
-        ConsoleError.println(F("[XTouch][Touch] Failed to read touch config"));
-
+    DynamicJsonDocument doc = xtouch_storage_read(xtouch_paths_touch, 512);
     config.xCalM = doc["xCalM"].as<float>();
     config.yCalM = doc["yCalM"].as<float>();
     config.xCalC = doc["xCalC"].as<float>();
     config.yCalC = doc["yCalC"].as<float>();
 
-    file.close();
 }
 
 void xtouch_saveTouchConfig(XTouchPanelConfig &config)
@@ -76,13 +63,13 @@ void xtouch_saveTouchConfig(XTouchPanelConfig &config)
     doc["yCalM"] = config.yCalM;
     doc["xCalC"] = config.xCalC;
     doc["yCalC"] = config.yCalC;
-    xtouch_filesystem_writeJson(SD, xtouch_paths_touch, doc);
+    xtouch_storage_write(xtouch_paths_touch, doc);
 }
 
 void xtouch_resetTouchConfig()
 {
     ConsoleInfo.println(F("[XTouch][FS] Resetting touch config"));
-    xtouch_filesystem_deleteFile(SD, xtouch_paths_touch);
+    xtouch_storage_delete(xtouch_paths_touch);
     delay(500);
     ESP.restart();
 }
@@ -90,7 +77,7 @@ void xtouch_resetTouchConfig()
 bool hasTouchConfig()
 {
     ConsoleInfo.println(F("[XTouch][FS] Checking for touch config"));
-    return xtouch_filesystem_exist(SD, xtouch_paths_touch);
+    return xtouch_storage_has(xtouch_paths_touch);
 }
 
 void xtouch_touch_setup()

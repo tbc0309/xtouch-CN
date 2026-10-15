@@ -82,47 +82,53 @@ void xtouch_firmware_checkOnlineFirmwareUpdate(void)
     lv_label_set_text(introScreenCaption, XTOUCH_TEXT_CHECKING_FOR_OTA_UPDATE);
     lv_refr_now(NULL);
     ConsoleInfo.printf("[OTA] checking current=%s\n", XTOUCH_FIRMWARE_VERSION);
-    if (!downloadFileToSDCard(xtouch_paths_firmware_ota_file, xtouch_paths_firmware_ota_json)) return;
-    DynamicJsonDocument doc = xtouch_filesystem_readJson(SD, xtouch_paths_firmware_ota_json);
+    fs::FS &cache = xtouch_storage_sd_available() ? static_cast<fs::FS &>(SD) : static_cast<fs::FS &>(SPIFFS);
+    if (!downloadFileToFS(cache, xtouch_paths_firmware_ota_file, xtouch_paths_firmware_ota_json)) return;
+    DynamicJsonDocument doc = xtouch_filesystem_readJson(cache, xtouch_paths_firmware_ota_json);
     SemVer current, remote;
     if (!xtouch_firmware_manifest_valid(doc) || !parseSemVer(XTOUCH_FIRMWARE_VERSION, current) ||
         !parseSemVer(doc["version"], remote)) {
         ConsoleError.println("[OTA] invalid manifest");
-        SD.remove(xtouch_paths_firmware_ota_json);
+        cache.remove(xtouch_paths_firmware_ota_json);
         return;
     }
     if (!isSemVerGreaterThan(remote, current)) {
         ConsoleInfo.println("[OTA] already current");
-        SD.remove(xtouch_paths_firmware_ota_json);
+        cache.remove(xtouch_paths_firmware_ota_json);
         return;
     }
     // Two bounded attempts; a failed update must never prevent normal startup.
     for (unsigned attempt = 0; attempt < 2; attempt++) {
-        bool success = downloadFileToSDCard(doc["url"], xtouch_paths_firmware_ota_fw,
-            [](int progress) {
-                lv_label_set_text_fmt(introScreenCaption, XTOUCH_TEXT_DOWNLOADING_UPDATE_D, progress);
-                lv_timer_handler();
-            }, NULL, doc["md5"], doc["size"]);
+        auto progress = [](int progress) {
+            lv_label_set_text_fmt(introScreenCaption, XTOUCH_TEXT_DOWNLOADING_UPDATE_D, progress);
+            lv_timer_handler();
+        };
+        bool success;
+        if (xtouch_storage_sd_available()) success = downloadFileToFS(SD, doc["url"], xtouch_paths_firmware_ota_fw,
+            progress, NULL, doc["md5"], doc["size"]);
+        else success = downloadFirmwareToFlash(doc["url"], doc["md5"], doc["size"], progress);
         if (success) {
-            ConsoleInfo.println("[OTA] staged, rebooting to install");
+            if (!xtouch_storage_sd_available()) cache.remove(xtouch_paths_firmware_ota_json);
+            ConsoleInfo.println("[OTA] verified, rebooting");
             delay(200);
             ESP.restart();
         }
     }
-    SD.remove(xtouch_paths_firmware_ota_json);
+    cache.remove(xtouch_paths_firmware_ota_json);
     lv_label_set_text(introScreenCaption, XTOUCH_TEXT_FAILED_TO_DOWNLOAD_UPDATE);
     lv_refr_now(NULL);
 }
 
 void xtouch_firmware_checkFirmwareUpdate(void)
 {
-    if (!SD.exists(xtouch_paths_firmware_ota_fw)) return;
-    DynamicJsonDocument doc = xtouch_filesystem_readJson(SD, xtouch_paths_firmware_ota_json);
+    if (!xtouch_storage_sd_available() || !SD.exists(xtouch_paths_firmware_ota_fw)) return;
+    bool manifestPresent = SD.exists(xtouch_paths_firmware_ota_json);
+    DynamicJsonDocument doc(1024);
+    if (manifestPresent) doc = xtouch_filesystem_readJson(SD, xtouch_paths_firmware_ota_json);
     bool verified = xtouch_firmware_manifest_valid(doc);
     File firmware = SD.open(xtouch_paths_firmware_ota_fw, FILE_READ);
     // Plain firmware.bin on SD remains supported; an OTA manifest, when present,
     // must be valid and match the complete image before touching flash.
-    bool manifestPresent = SD.exists(xtouch_paths_firmware_ota_json);
     bool valid = firmware && firmware.size() > 0 && firmware.size() <= 1966080 && firmware.peek() == 0xE9;
     if (manifestPresent) valid = valid && verified && firmware.size() == doc["size"].as<unsigned>();
     if (valid && manifestPresent) {
@@ -144,6 +150,7 @@ void xtouch_firmware_checkFirmwareUpdate(void)
         }
     }
     firmware.close();
+    Update.onProgress(nullptr);
     SD.remove(xtouch_paths_firmware_ota_json);
     SD.remove(xtouch_paths_firmware_ota_fw);
     ConsoleInfo.printf("[OTA] install %s\n", installed ? "SUCCESS" : "REJECTED");

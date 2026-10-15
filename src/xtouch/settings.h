@@ -16,12 +16,12 @@ void xtouch_settings_save(bool onlyRoot = false)
     doc["auxFan"] = xTouchConfig.xTouchAuxFanEnabled;
     doc["chamberFan"] = xTouchConfig.xTouchChamberFanEnabled;
 
-    xtouch_filesystem_writeJson(SD, xtouch_paths_settings, doc);
+    if (!xtouch_storage_write(xtouch_paths_settings, doc)) ConsoleError.println("[STORE] settings save failed");
 }
 
 void xtouch_settings_loadSettings()
 {
-    if (!xtouch_filesystem_exist(SD, xtouch_paths_settings))
+    if (!xtouch_storage_has(xtouch_paths_settings))
     {
         DynamicJsonDocument doc(256);
         xTouchConfig.xTouchBacklightLevel = 128;
@@ -36,7 +36,7 @@ void xtouch_settings_loadSettings()
         xtouch_settings_save(true);
     }
 
-    DynamicJsonDocument settings = xtouch_filesystem_readJson(SD, xtouch_paths_settings);
+    DynamicJsonDocument settings = xtouch_storage_read(xtouch_paths_settings, 2048);
     const char *language = settings["language"] | "zh";
     xtouch_language_set(strcmp(language, "en") == 0 ? 2 : strcmp(language, "zh-TW") == 0 ? 1 : 0);
 

@@ -1,0 +1,316 @@
+#include "storage.h"
+#include <SPIFFS.h>
+#include <SD.h>
+#include <MD5Builder.h>
+#include <esp_partition.h>
+#include <math.h>
+#include <time.h>
+
+namespace {
+const char *paths[] = {"/xtouch.json", "/xtouch/settings.json", "/xtouch/touch.json", "/xtouch/hardware.json"};
+size_t capacityFor(const char *path) {
+    if (!strcmp(path, paths[0])) return 8192;
+    if (!strcmp(path, paths[1])) return 2048;
+    return 1024;
+}
+bool ready = false, sdAvailable = false, restartRequired = false;
+
+bool knownPath(const char *path) {
+    for (auto candidate : paths) if (!strcmp(candidate, path)) return true;
+    return false;
+}
+uint32_t now() { time_t value = time(nullptr); return value >= 1577836800 && value < 4102444800LL ? value : 0; }
+uint32_t credible(uint32_t value) {
+    return value >= 1577836800 && value < 4102444800UL && (!now() || value <= now() + 120) ? value : 0;
+}
+String digest(JsonDocument &doc) {
+    String body; serializeJson(doc, body);
+    MD5Builder hash; hash.begin(); hash.add(body); hash.calculate(); return hash.toString();
+}
+struct Record {
+    explicit Record(size_t capacity) : data(capacity) {}
+    DynamicJsonDocument data;
+    String hash;
+    uint32_t revision = 0, modified = 0;
+    bool valid = false, deleted = false, dirty = false, external = false, legacy = false;
+};
+bool validPayload(const char *path, JsonDocument &doc) {
+    if (!doc.is<JsonObject>() || measureJson(doc) > 4096) return false;
+    if (!strcmp(path, paths[0])) {
+        const char *ssid = doc["ssid"], *pwd = doc["pwd"];
+        if (!ssid || !*ssid || strlen(ssid) > 32 || !pwd || strlen(pwd) > 64) return false;
+        if (doc["printers"].is<JsonArray>()) {
+            unsigned usable = 0, slot = 0;
+            for (JsonVariant p : doc["printers"].as<JsonArray>()) {
+                if (slot++ >= 4) break;
+                if (p.isNull()) continue;
+                const char *host = p["host"], *code = p["accessCode"], *serial = p["serialNumber"];
+                if (!host || !*host || strlen(host) >= 64 || !code || strlen(code) != 8 ||
+                    !serial || !*serial || strlen(serial) >= 32) continue;
+                usable++;
+            }
+            return usable > 0;
+        }
+        JsonVariant p = doc["mqtt"];
+        const char *host = p["host"], *code = p["accessCode"], *serial = p["serialNumber"];
+        return host && *host && strlen(host) < 64 && code && strlen(code) == 8 && serial && *serial && strlen(serial) < 32;
+    }
+    if (!strcmp(path, paths[2])) {
+        for (const char *key : {"xCalM", "yCalM", "xCalC", "yCalC"})
+            if (!doc[key].is<float>() || !isfinite(doc[key].as<float>())) return false;
+        return fabs(doc["xCalM"].as<float>()) > .001f && fabs(doc["xCalM"].as<float>()) < 10 &&
+               fabs(doc["yCalM"].as<float>()) > .001f && fabs(doc["yCalM"].as<float>()) < 10 &&
+               fabs(doc["xCalC"].as<float>()) < 4096 && fabs(doc["yCalC"].as<float>()) < 4096;
+    }
+    if (!strcmp(path, paths[3])) return doc["flip"].is<unsigned>() && doc["flip"].as<unsigned>() <= 1;
+    if (doc.containsKey("backlight") && (!doc["backlight"].is<int>() || doc["backlight"].as<int>() < 0 || doc["backlight"].as<int>() > 255)) return false;
+    if (doc.containsKey("tftOff") && (!doc["tftOff"].is<int>() || doc["tftOff"].as<int>() < 0 || doc["tftOff"].as<int>() > 240)) return false;
+    if (doc.containsKey("chamberTempDiff") && (!doc["chamberTempDiff"].is<int>() ||
+        doc["chamberTempDiff"].as<int>() < -128 || doc["chamberTempDiff"].as<int>() > 127)) return false;
+    if (doc.containsKey("language")) {
+        const char *language = doc["language"];
+        if (!language || (strcmp(language, "zh") && strcmp(language, "zh-TW") && strcmp(language, "en"))) return false;
+    }
+    for (const char *key : {"tftInvert", "ota", "wop", "chamberTemp", "auxFan", "chamberFan"})
+        if (doc.containsKey(key) && !doc[key].is<bool>()) return false;
+    return true;
+}
+void read(fs::FS &fs, const char *path, Record &record, bool internal, const char *logicalPath = nullptr) {
+    if (!fs.exists(path)) return;
+    File file = fs.open(path, FILE_READ);
+    if (!file || file.size() > 6144 || !file.size()) { if (file) file.close(); return; }
+    uint32_t modified = credible(file.getLastWrite());
+    auto error = deserializeJson(record.data, file); file.close();
+    if (error || !record.data.is<JsonObject>()) return;
+    JsonObject meta = record.data["_storage"];
+    record.legacy = meta.isNull();
+    String previousHash = meta["digest"] | "";
+    record.revision = meta["revision"] | 0U;
+    record.modified = credible(meta["modified"] | 0U);
+    record.deleted = meta["deleted"] | false;
+    record.dirty = meta["dirty"] | false;
+    record.data.remove("_storage");
+    record.hash = digest(record.data);
+    record.external = previousHash != record.hash;
+    // An edited SD JSON is new input, not trusted metadata from the previous backup.
+    if (!internal && record.external) {
+        // FAT has no timezone. A PC clock older than the previous backup is
+        // ambiguous, so use conflict rules rather than pretending it is UTC.
+        record.modified = record.modified && modified < record.modified ? 0 : modified;
+        record.deleted = false; record.dirty = false;
+    }
+    if (internal && record.external) return;
+    record.valid = record.deleted ? record.data.size() == 0 && !record.external
+                                  : validPayload(logicalPath ? logicalPath : path, record.data);
+}
+bool copyFile(fs::FS &from, const char *source, fs::FS &to, const char *target) {
+    if (!from.exists(source)) return false;
+    File input = from.open(source, FILE_READ);
+    if (!input || input.size() > 6144) return false;
+    File output = to.open(target, FILE_WRITE);
+    if (!output) { input.close(); return false; }
+    uint8_t block[256]; bool ok = true;
+    while (input.available()) {
+        int count = input.read(block, sizeof(block));
+        if (count <= 0 || output.write(block, count) != size_t(count)) { ok = false; break; }
+        yield();
+    }
+    output.flush(); output.close(); input.close(); return ok;
+}
+// Original pre-CN files are immutable .bak snapshots; normal saves rotate .previous.
+bool preserveOriginal(const char *path) {
+    String backup = String(path) + ".bak";
+    if (SD.exists(backup)) return true;
+    if (!copyFile(SD, path, SD, backup.c_str())) return false;
+    // Verify exact bytes before allowing a legacy file to be replaced.
+    File a = SD.open(path), b = SD.open(backup);
+    bool same = a && b && a.size() == b.size();
+    while (same && a.available()) same = a.read() == b.read();
+    a.close(); b.close();
+    if (!same) SD.remove(backup);
+    return same;
+}
+bool normalizeConfig(const char *path, Record &record) {
+    if (strcmp(path, paths[0]) || record.deleted || record.data["printers"].is<JsonArray>() ||
+        !record.data["mqtt"].is<JsonObject>()) return false;
+    // Build separately so allocation failure cannot partially erase a valid source.
+    DynamicJsonDocument normalized(capacityFor(path));
+    normalized.set(record.data);
+    normalized.remove("mqtt");
+    auto list = normalized.createNestedArray("printers");
+    list.add(record.data["mqtt"]);
+    normalized["activePrinter"] = 0;
+    if (normalized.overflowed()) return false;
+    record.data.set(normalized);
+    return !record.data.overflowed();
+}
+bool write(fs::FS &fs, const char *path, Record &record) {
+    DynamicJsonDocument encoded(capacityFor(path)); encoded.set(record.data);
+    JsonObject meta = encoded.createNestedObject("_storage");
+    meta["format"] = 1; meta["revision"] = record.revision; meta["modified"] = record.modified;
+    meta["digest"] = record.hash; meta["deleted"] = record.deleted; meta["dirty"] = record.dirty;
+    if (encoded.overflowed()) return false;
+    String temporary = String(path) + ".tmp", backup = String(path) + ".previous";
+    if (fs.exists(temporary)) fs.remove(temporary);
+    File file = fs.open(temporary, FILE_WRITE);
+    if (!file) return false;
+    size_t count = serializeJson(encoded, file); file.flush(); file.close();
+    Record check(capacityFor(path)); read(fs, temporary.c_str(), check, true, path);
+    // Validation depends on the logical path rather than the temporary filename.
+    if (!count || !check.valid || check.hash != record.hash || check.deleted != record.deleted) {
+        fs.remove(temporary); return false;
+    }
+    if (fs.exists(backup)) fs.remove(backup);
+    if (fs.exists(path) && !fs.rename(path, backup.c_str())) { fs.remove(temporary); return false; }
+    if (!fs.rename(temporary.c_str(), path)) {
+        if (fs.exists(backup)) fs.rename(backup.c_str(), path);
+        return false;
+    }
+    return true;
+}
+void recover(const char *path) {
+    Record current(capacityFor(path)); read(SPIFFS, path, current, true);
+    if (current.valid) return;
+    String backup = String(path) + ".previous";
+    if (!SPIFFS.exists(backup)) backup = String(path) + ".bak";
+    Record previous(capacityFor(path)); read(SPIFFS, backup.c_str(), previous, true, path);
+    if (previous.valid) {
+        if (SPIFFS.exists(path)) SPIFFS.remove(path);
+        if (SPIFFS.rename(backup.c_str(), path)) Serial.printf("[STORE] recovered %s\n", path);
+    }
+}
+bool syncOne(const char *path, bool runtime, bool forceLocal = false) {
+    Record local(capacityFor(path)), card(capacityFor(path)); read(SPIFFS, path, local, true); read(SD, path, card, false);
+    if (!local.valid && !card.valid) return false;
+    bool legacyConfig = card.valid && !strcmp(path, paths[0]) &&
+        card.data["mqtt"].is<JsonObject>() && !card.data["printers"].is<JsonArray>();
+    if (card.valid && (card.legacy || legacyConfig) && !preserveOriginal(path)) {
+        Serial.printf("[STORE] migration backup failed: %s\n", path);
+        return false;
+    }
+    // Normalize either source before comparing content, including an already
+    // initialized 0.9.213 device whose internal copy still uses mqtt.
+    bool localConverted = local.valid && normalizeConfig(path, local);
+    if (localConverted) local.hash = digest(local.data);
+    if (card.valid && normalizeConfig(path, card)) {
+        card.hash = digest(card.data); card.external = true;
+    }
+    if (local.valid && card.valid && local.hash == card.hash && local.deleted == card.deleted) {
+        if (localConverted) {
+            local.revision++; local.dirty = true;
+            if (!write(SPIFFS, path, local)) return false;
+        }
+        if ((local.dirty || card.legacy || legacyConfig) && write(SD, path, local)) { local.dirty = false; write(SPIFFS, path, local); }
+        return false;
+    }
+    bool importCard = !local.valid;
+    if (local.valid && card.valid && !forceLocal) {
+        if (!now() && local.dirty) importCard = false;
+        else if (local.modified && card.modified && llabs(int64_t(local.modified) - card.modified) > 2)
+            importCard = card.modified > local.modified;
+        else importCard = !local.dirty && (card.external || card.revision > local.revision);
+    }
+    if (importCard) {
+        if (local.valid) copyFile(SPIFFS, path, SPIFFS, (String(path) + ".conflict").c_str());
+        card.revision = max(card.revision, local.revision) + 1;
+        card.dirty = true;
+        if (!write(SPIFFS, path, card)) return false;
+        Serial.printf("[STORE] imported %s revision=%u\n", path, card.revision);
+        if (write(SD, path, card)) { card.dirty = false; write(SPIFFS, path, card); }
+        if (runtime) restartRequired = true;
+        return true;
+    }
+    if (localConverted) {
+        local.revision++; local.dirty = true;
+        if (!write(SPIFFS, path, local)) return false;
+    }
+    if (card.valid && (card.external || local.dirty)) copyFile(SD, path, SD, (String(path) + ".conflict").c_str());
+    if (!card.valid && SD.exists(path) &&
+        !copyFile(SD, path, SD, (String(path) + ".invalid").c_str())) {
+        Serial.printf("[STORE] invalid SD file preserved: %s\n", path);
+        return false;
+    }
+    if (write(SD, path, local)) {
+        local.dirty = false; write(SPIFFS, path, local);
+        Serial.printf("[STORE] exported %s revision=%u\n", path, local.revision);
+    }
+    return false;
+}
+}
+
+bool xtouch_storage_begin() {
+    if (SPIFFS.begin(false)) ready = true;
+    else {
+        // Formatting is permitted only for an entirely erased configuration partition.
+        auto partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, nullptr);
+        bool erased = partition; uint8_t data[256];
+        for (size_t offset = 0; erased && offset < partition->size; offset += sizeof(data)) {
+            if (esp_partition_read(partition, offset, data, sizeof(data)) != ESP_OK) { erased = false; break; }
+            for (auto value : data) if (value != 0xff) { erased = false; break; }
+        }
+        if (erased && SPIFFS.format()) ready = SPIFFS.begin(false);
+    }
+    if (ready) for (auto path : paths) recover(path);
+    Serial.printf("[STORE] internal %s total=%u used=%u\n", ready ? "ready" : "FAILED", unsigned(SPIFFS.totalBytes()), unsigned(SPIFFS.usedBytes()));
+    return ready;
+}
+bool xtouch_storage_ready() { return ready; }
+void xtouch_storage_set_sd(bool available) { sdAvailable = available; }
+bool xtouch_storage_sd_available() { return sdAvailable; }
+bool xtouch_storage_has(const char *path) {
+    if (!ready || !knownPath(path)) return false;
+    Record record(capacityFor(path)); read(SPIFFS, path, record, true); return record.valid && !record.deleted;
+}
+DynamicJsonDocument xtouch_storage_read(const char *path, size_t resultCapacity) {
+    DynamicJsonDocument result(resultCapacity);
+    if (!ready || !knownPath(path)) return result;
+    Record record(capacityFor(path)); read(SPIFFS, path, record, true);
+    if (record.valid && !record.deleted) result.set(record.data);
+    if (result.overflowed()) result.clear();
+    return result;
+}
+bool xtouch_storage_write(const char *path, const JsonDocument &document) {
+    if (!ready || !knownPath(path)) return false;
+    Record old(capacityFor(path)), current(capacityFor(path)); read(SPIFFS, path, old, true); current.data.set(document); current.data.remove("_storage");
+    if (current.data.overflowed() || !validPayload(path, current.data)) return false;
+    normalizeConfig(path, current);
+    if (current.data.overflowed()) return false;
+    current.hash = digest(current.data);
+    if (old.valid && !old.deleted && old.hash == current.hash) {
+        if (old.dirty && sdAvailable) syncOne(path, false, true);
+        return true;
+    }
+    current.revision = old.revision + 1; current.modified = now(); current.dirty = true;
+    if (!write(SPIFFS, path, current)) return false;
+    Serial.printf("[STORE] saved %s revision=%u\n", path, current.revision);
+    if (sdAvailable) syncOne(path, false, true);
+    return true;
+}
+bool xtouch_storage_delete(const char *path) {
+    if (!ready || !knownPath(path)) return false;
+    Record old(capacityFor(path)), tombstone(capacityFor(path)); read(SPIFFS, path, old, true);
+    if (old.valid && old.deleted) return true;
+    tombstone.data.to<JsonObject>(); tombstone.hash = digest(tombstone.data); tombstone.deleted = true;
+    tombstone.revision = old.revision + 1; tombstone.modified = now(); tombstone.dirty = true;
+    if (!write(SPIFFS, path, tombstone)) return false;
+    if (sdAvailable) syncOne(path, false, true);
+    return true;
+}
+bool xtouch_storage_sync(bool runtime) {
+    if (!ready || !sdAvailable) return false;
+    if (!SD.exists("/xtouch")) SD.mkdir("/xtouch");
+    bool imported = false;
+    for (auto path : paths) imported |= syncOne(path, runtime);
+    return imported;
+}
+bool xtouch_storage_restart_required() { return restartRequired; }
+void xtouch_storage_clock_ready() {
+    if (!ready || !now()) return;
+    for (auto path : paths) {
+        Record record(capacityFor(path)); read(SPIFFS, path, record, true);
+        if (record.valid && !record.modified) {
+            record.modified = now(); record.dirty = true;
+            write(SPIFFS, path, record);
+        }
+    }
+}

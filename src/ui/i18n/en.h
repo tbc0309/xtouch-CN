@@ -71,3 +71,5 @@
 #define XTOUCH_TEXT_LANGUAGE_EN "Language"
 #define XTOUCH_TEXT_FLIP_CONFIRM_EN " Flip screen\n Reboot"
 #define XTOUCH_TEXT_LOAD_CONFIRM_EN " Load new filament\n into the printer\n\n Tap OK to continue"
+#define XTOUCH_TEXT_STORAGE_ERROR_EN "Internal config storage unavailable"
+#define XTOUCH_TEXT_INITIAL_CONFIG_EN "First setup: insert SD with xtouch.json"

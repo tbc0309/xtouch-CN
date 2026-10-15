@@ -5,6 +5,7 @@
 #include "filesystem.h"
 #include "paths.h"
 #include "printers.h"
+#include "storage.h"
 
 struct XTouchPrinterProfile {
     char name[64];
@@ -65,23 +66,10 @@ static void xtouch_printer_parse(JsonVariantConst value, uint8_t slot) {
     p.configured = true;
 }
 
-/*
-{
-  "ssid": "xperiments-2.4G",
-  "pwd": "viernes13",
-  "timeout": "3000",
-  "coldboot": "5000",
-  "mqtt": {
-    "host": "192.168.0.18",
-    "accessCode": "24660910",
-    "serialNumber": "01S00C342600288",
-    "printerModel": "P1P"
-  }
-}
-*/
+
 DynamicJsonDocument xtouch_load_config()
 {
-    DynamicJsonDocument config = xtouch_filesystem_readJson(SD, xtouch_paths_config, false, 4096);
+    DynamicJsonDocument config = xtouch_storage_read(xtouch_paths_config, 4096);
     if (!config.isNull() && !xtouch_profiles_loaded) {
         if (config["printers"].is<JsonArray>()) {
             JsonArray list = config["printers"].as<JsonArray>();

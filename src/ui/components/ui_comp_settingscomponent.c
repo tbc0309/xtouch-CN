@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "../ui.h"
 #include "../ui_msgs.h"
+LV_IMG_DECLARE(ui_img_github);
 
 void ui_event_comp_settingsComponent_resetDeviceButton(lv_event_t *e)
 {
@@ -623,6 +624,22 @@ lv_obj_t *ui_settingsComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_pad_top(cui_reseDeviceButton, 16, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_bottom(cui_reseDeviceButton, 16, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(cui_reseDeviceButton, lv_color_hex(0x000), LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    // This device has no browser: show the complete project URL as a single line.
+    lv_obj_t *projectRow = lv_obj_create(cui_settingsComponent);
+    lv_obj_remove_style_all(projectRow);
+    lv_obj_set_size(projectRow, lv_pct(100), 30);
+    lv_obj_set_flex_flow(projectRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(projectRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(projectRow, 5, 0);
+    lv_obj_clear_flag(projectRow, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *projectIcon = lv_img_create(projectRow);
+    lv_img_set_src(projectIcon, &ui_img_github);
+    lv_obj_t *projectUrl = lv_label_create(projectRow);
+    lv_obj_set_style_text_font(projectUrl, LV_FONT_DEFAULT, 0);
+    lv_obj_set_style_text_color(projectUrl, lv_color_hex(0x9DD9FF), 0);
+    lv_label_set_long_mode(projectUrl, LV_LABEL_LONG_CLIP);
+    lv_label_set_text(projectUrl, "github.com/tbc0309/xtouch-CN");
 
     lv_obj_t **children = lv_mem_alloc(sizeof(lv_obj_t *) * _UI_COMP_SETTINGSCOMPONENT_NUM);
     children[UI_COMP_SETTINGSCOMPONENT_SETTINGSCOMPONENT] = cui_settingsComponent;

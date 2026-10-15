@@ -71,3 +71,5 @@
 #define XTOUCH_TEXT_LANGUAGE_TW "語言"
 #define XTOUCH_TEXT_FLIP_CONFIRM_TW " 翻轉屏幕\n 重啓"
 #define XTOUCH_TEXT_LOAD_CONFIRM_TW " 裝入新耗材\n 到打印機\n\n 點擊確定繼續"
+#define XTOUCH_TEXT_STORAGE_ERROR_TW "內部設定儲存無法使用"
+#define XTOUCH_TEXT_INITIAL_CONFIG_TW "首次啟動請插入含 xtouch.json 的 SD 卡"

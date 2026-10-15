@@ -27,7 +27,8 @@ void xtouch_coldboot_check()
     if (rtc_get_reset_reason(0) == POWERON_RESET)
     {
         DynamicJsonDocument config = xtouch_load_config();
-        int coldbootTimeout = config.containsKey("coldboot") ? config["coldboot"].as<int>() : 5000;
+        int coldbootTimeout = config["coldboot"] | 5000;
+        coldbootTimeout = constrain(coldbootTimeout, 0, 30000);
         lv_label_set_text(introScreenCaption, XTOUCH_TEXT_STARTING);
         lv_obj_set_style_text_color(introScreenCaption, lv_color_hex(0x555555), LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_timer_handler();
