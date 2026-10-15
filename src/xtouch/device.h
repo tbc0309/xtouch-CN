@@ -53,6 +53,7 @@ void xtouch_device_set_print_state(String state)
 
 void xtouch_device_publish(String request)
 {
+    if (xtouch_printer_switch_pending() || !xtouch_pubSubClient.connected()) return;
     xtouch_pubSubClient.publish(xtouch_mqtt_request_topic.c_str(), request.c_str());
     delay(10);
 }

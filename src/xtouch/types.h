@@ -149,11 +149,11 @@ extern "C"
         bool xTouchOTAEnabled;
         bool xTouchTFTFlip;
         bool xTouchTFTInvert;
-        char xTouchHost[16];
+        char xTouchHost[64];
         char xTouchAccessCode[9];
-        char xTouchSerialNumber[16];
+        char xTouchSerialNumber[32];
         char xTouchPrinterModel[32];
-        char xTouchPrinterName[32];
+        char xTouchPrinterName[64];
         int xTouchBacklightLevel;
         int xTouchTFTOFFValue;
         bool xTouchWakeOnPrint;

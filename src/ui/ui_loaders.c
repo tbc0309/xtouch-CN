@@ -2,6 +2,30 @@
 #include "ui.h"
 #include "ui_msgs.h"
 
+static bool printerNoticeActive;
+static lv_timer_t *printerNoticeTimer;
+
+bool isPrinterNoticeActive(void)
+{
+    return printerNoticeActive;
+}
+
+static void closePrinterNotice(lv_timer_t *timer)
+{
+    printerNoticeActive = false;
+    printerNoticeTimer = NULL;
+    lv_timer_del(timer);
+    if (xTouchConfig.currentScreenIndex == 0) fillScreenData(0);
+}
+
+void showPrinterNotice(void)
+{
+    if (printerNoticeTimer) lv_timer_del(printerNoticeTimer);
+    printerNoticeActive = true;
+    printerNoticeTimer = lv_timer_create(closePrinterNotice, 2000, NULL);
+    fillScreenData(0);
+}
+
 void sendMqttMsg(int message, uint32_t data)
 {
     struct XTOUCH_MESSAGE_DATA eventData;
@@ -43,13 +67,14 @@ void fillScreenData(int screen)
 
 void loadScreen(int screen)
 {
+    if (screen < -1 || screen > 4) return;
     xTouchConfig.currentScreenIndex = screen;
     lv_obj_t *current = lv_scr_act();
-    if (current != NULL)
-    {
-        lv_obj_clean(current);
-        lv_obj_del(current);
-    }
+    /* The LVGL pool cannot hold two full pages. Load a lightweight screen
+       without refreshing it, release the old page, then construct the next. */
+    lv_obj_t *transition = lv_obj_create(NULL);
+    lv_disp_load_scr(transition);
+    if (current != NULL) lv_obj_del(current);
 
     switch (screen)
     {
@@ -79,6 +104,7 @@ void loadScreen(int screen)
         break;
     }
 
+    lv_obj_del(transition);
     fillScreenData(screen);
 
     if (screen >= 0 && screen < 5)

@@ -2,3 +2,7 @@
 .vscode
 .DS_Store
 node_modules
+LOCAL-REVIEW.zh-CN.md
+*.ttf
+*.otf
+python3.cmd

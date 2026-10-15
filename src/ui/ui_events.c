@@ -30,7 +30,7 @@ void onHomeControllerPlayPause(lv_event_t *e)
         break;
     case XTOUCH_PRINT_STATUS_RUNNING:
     case XTOUCH_PRINT_STATUS_PREPARE:
-        ui_confirmPanel_show(LV_SYMBOL_WARNING " Pause Print?", onHomeControllerPlayPauseConfirm);
+        ui_confirmPanel_show(XTOUCH_TEXT_PAUSE_PRINT, onHomeControllerPlayPauseConfirm);
         break;
     }
 
@@ -40,7 +40,7 @@ void onHomeControllerPlayPause(lv_event_t *e)
 void onHomeControllerStopConfirm() { lv_msg_send(XTOUCH_COMMAND_STOP, NULL); }
 void onHomeControllerStop(lv_event_t *e)
 {
-    ui_confirmPanel_show(LV_SYMBOL_WARNING " Cancel Print?", onHomeControllerStopConfirm);
+    ui_confirmPanel_show(XTOUCH_TEXT_CANCEL_PRINT, onHomeControllerStopConfirm);
 }
 void onHomeSpeedSelection(lv_event_t *e) {}
 void onHomeLight(lv_event_t *e) { lv_msg_send(XTOUCH_COMMAND_LIGHT_TOGGLE, NULL); }
@@ -88,7 +88,7 @@ void onControlAxis(lv_event_t *e) { lv_msg_send(XTOUCH_CONTROL_AXIS_SWITCH, NULL
 void onSettingsResetDeviceConfirm() { lv_msg_send(XTOUCH_SETTINGS_RESET_DEVICE, NULL); }
 void onSettingsResetDevice(lv_event_t *e)
 {
-    ui_confirmPanel_show(LV_SYMBOL_WARNING " REBOOT", onSettingsResetDeviceConfirm);
+    ui_confirmPanel_show(XTOUCH_TEXT_REBOOT, onSettingsResetDeviceConfirm);
 }
 
 void onSettingsWOP(lv_event_t *e)
@@ -129,7 +129,7 @@ void onSettingsOTA(lv_event_t *e)
 
 void onSettingsTFTFlip(lv_event_t *e)
 {
-    ui_confirmPanel_show(LV_SYMBOL_WARNING " Flip LCD\n" LV_SYMBOL_REFRESH " Reboot", onSettingsTFTFlipConfirm);
+    ui_confirmPanel_show(XTOUCH_TEXT_FLIP_CONFIRM, onSettingsTFTFlipConfirm);
 }
 
 /* filament */
@@ -147,11 +147,11 @@ void onNozzleDown(lv_event_t *e)
 void onFilamentUnloadConfirm() { lv_msg_send(XTOUCH_COMMAND_UNLOAD_FILAMENT, NULL); }
 void onFilamentUnload(lv_event_t *e)
 {
-    ui_confirmPanel_show("Please remove\nthe filament after\n" LV_SYMBOL_CUT, onFilamentUnloadConfirm);
+    ui_confirmPanel_show(XTOUCH_TEXT_REMOVE_FILAMENT, onFilamentUnloadConfirm);
 }
 
 void onFilamentLoadConfirm() { lv_msg_send(XTOUCH_COMMAND_LOAD_FILAMENT, NULL); }
 void onFilamentLoad(lv_event_t *e)
 {
-    ui_confirmPanel_show(LV_SYMBOL_PLAY " Load new Filament\n" LV_SYMBOL_PLAY " into the Printer\n\n" LV_SYMBOL_OK " Tap YES to continue", onFilamentLoadConfirm);
+    ui_confirmPanel_show(XTOUCH_TEXT_LOAD_CONFIRM, onFilamentLoadConfirm);
 }

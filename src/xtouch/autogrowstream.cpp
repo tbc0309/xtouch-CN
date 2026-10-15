@@ -8,17 +8,20 @@ XtouchAutoGrowBufferStream::XtouchAutoGrowBufferStream()
 {
     this->_len = 0;
     this->_buffer = (char*)malloc(BUFFER_INCREMENTS); // Allocate initial buffer
+    this->buffer_size = this->_buffer ? BUFFER_INCREMENTS : 0;
+    if (this->_buffer) this->_buffer[0] = '\0';
 }
 
 
 bool XtouchAutoGrowBufferStream::includes(const char* target) {
-  return strstr(this->_buffer, target) != nullptr;
+  return this->_buffer && strstr(this->_buffer, target) != nullptr;
 }
 
 // Write a byte to the buffer
 size_t XtouchAutoGrowBufferStream::write(uint8_t byte) {
     // Check if there is enough space in the buffer
-    if (this->_len + 1 > this->buffer_size) {
+    if (this->_len >= 16383) return 0;
+    if (this->_len + 1 >= this->buffer_size) {
         // If not enough space, grow the buffer
         auto tmp = (char*)realloc(this->_buffer, this->buffer_size + BUFFER_INCREMENTS);
 
@@ -39,6 +42,7 @@ size_t XtouchAutoGrowBufferStream::write(uint8_t byte) {
 
     // Increment the buffer length to reflect the added byte
     this->_len++;
+    this->_buffer[this->_len] = '\0';
 
     // Return the number of bytes written (always 1 in this case)
     return 1;
@@ -48,8 +52,12 @@ size_t XtouchAutoGrowBufferStream::write(uint8_t byte) {
 void XtouchAutoGrowBufferStream::flush() {
   this->_len=0;
   // Shrink the buffer
-  this->_buffer = (char*)realloc(this->_buffer, BUFFER_INCREMENTS);
-  this->buffer_size = BUFFER_INCREMENTS;
+  char *small = (char*)realloc(this->_buffer, BUFFER_INCREMENTS);
+  if (small) {
+    this->_buffer = small;
+    this->buffer_size = BUFFER_INCREMENTS;
+  }
+  if (this->_buffer) this->_buffer[0] = '\0';
 }
 
 // Dummy read method (not implemented)

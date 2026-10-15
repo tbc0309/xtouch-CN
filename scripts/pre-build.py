@@ -5,7 +5,9 @@ import hashlib
 
 Import("env")
 
-env = DefaultEnvironment()
+with open("version.json", encoding="utf-8") as version_file:
+    version = json.load(version_file)["version"]
+env.Append(CPPDEFINES=[("XTOUCH_FIRMWARE_VERSION", '\\"' + version + '\\"')])
 
 
 # Make sure 'vscode init' is not the current command
@@ -17,7 +19,7 @@ def is_pio_build():
     return not env.IsIntegrationDump()
 
 
-if is_pio_build() == True:
+if is_pio_build() and os.environ.get("XTOUCH_REFRESH_ERRORS") == "1":
     print(f"XTOUCH PREBUILD")
     result = subprocess.run(['node', 'scripts/download-errors.js'],
                             text=True, check=True, capture_output=True)

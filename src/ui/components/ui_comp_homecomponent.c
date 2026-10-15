@@ -3,16 +3,49 @@
 #include "../ui.h"
 #include "xtouch/globals.h"
 
+static void on_printer_slot(lv_event_t *e)
+{
+    xtouch_printer_request((uint8_t)(uintptr_t)lv_event_get_user_data(e));
+}
+
+/* Small AMS enclosure with four spools; drawn natively, independent of fonts. */
+static void draw_ams_icon(lv_event_t *e)
+{
+    lv_obj_t *obj = lv_event_get_target(e);
+    lv_draw_ctx_t *ctx = lv_event_get_draw_ctx(e);
+    lv_area_t bounds;
+    lv_obj_get_content_coords(obj, &bounds);
+    const uint32_t colors[4] = {0xD74545, 0x777777, 0xEEEEEE, 0xE5C941};
+    for (unsigned i = 0; i < 4; i++) {
+        lv_draw_rect_dsc_t dsc;
+        lv_draw_rect_dsc_init(&dsc);
+        dsc.bg_color = lv_color_hex(bambuStatus.ams ? colors[i] : 0x777777);
+        dsc.bg_opa = LV_OPA_COVER;
+        dsc.radius = 2;
+        lv_area_t spool = {bounds.x1 + 1 + 5 * i, bounds.y1 + 2,
+                           bounds.x1 + 3 + 5 * i, bounds.y2 - 1};
+        lv_draw_rect(ctx, &dsc, &spool);
+    }
+}
+
 const char *xtouch_device_get_print_state()
 {
+    if (!xtouch_printer_configured(xtouch_printer_active())) return XTOUCH_TEXT_NO_PRINTER;
+    if (!xtouch_printer_online()) return XTOUCH_TEXT_PRINTER_WAITING;
     switch (bambuStatus.print_status)
     {
     case XTOUCH_PRINT_STATUS_IDLE:
-        return LV_SYMBOL_OK " Ready";
+        return XTOUCH_TEXT_READY;
     case XTOUCH_PRINT_STATUS_FINISHED:
-        return LV_SYMBOL_OK "Finished";
+        return XTOUCH_TEXT_FINISHED;
     case XTOUCH_PRINT_STATUS_FAILED:
-        return LV_SYMBOL_WARNING "Failed";
+        return XTOUCH_TEXT_FAILED;
+    case XTOUCH_PRINT_STATUS_RUNNING:
+        return XTOUCH_TEXT_PRINTING;
+    case XTOUCH_PRINT_STATUS_PAUSED:
+        return XTOUCH_TEXT_PAUSED;
+    case XTOUCH_PRINT_STATUS_PREPARE:
+        return XTOUCH_TEXT_PREPARING;
     default:
         return "N/A";
     }
@@ -171,14 +204,8 @@ void onXTouchAMS(lv_event_t *e)
     lv_msg_t *m = lv_event_get_msg(e);
 
     struct XTOUCH_MESSAGE_DATA *message = (struct XTOUCH_MESSAGE_DATA *)m->payload;
-    if (message->data == 1)
-    {
-        lv_obj_clear_flag(target, LV_OBJ_FLAG_HIDDEN);
-    }
-    else
-    {
-        lv_obj_add_flag(target, LV_OBJ_FLAG_HIDDEN);
-    }
+    lv_obj_set_style_border_color(target, lv_color_hex(message->data ? 0x74D34A : 0x777777), 0);
+    lv_obj_invalidate(target);
 }
 
 void onXTouchWifiSignal(lv_event_t *e)
@@ -224,6 +251,7 @@ int printingLevelToIndex(int lvl)
     case XTOUCH_SPEED_LEVEL_RAMPAGE:
         return 3;
     }
+    return 1; /* Unknown speed levels use Standard instead of undefined data. */
 }
 
 void onXTouchPrintStatus(lv_event_t *e)
@@ -249,7 +277,7 @@ void onXTouchPrintStatus(lv_event_t *e)
     lv_obj_t *playPauseButton = comp_homeComponent[UI_COMP_HOMECOMPONENT_MAINSCREENLEFT_MAINSCREENPLAYER_MAINSCREENCONTROLLER_MAINSCREENPLAYPAUSEBUTTON];
     lv_obj_t *dropDown = comp_homeComponent[UI_COMP_HOMECOMPONENT_MAINSCREENLEFT_MAINSCREENCENTRAL_MAINSCREENSPEEDDROPDOWN];
 
-    switch (bambuStatus.print_status)
+    switch (isPrinterNoticeActive() ? XTOUCH_PRINT_STATUS_IDLE : bambuStatus.print_status)
     {
     case XTOUCH_PRINT_STATUS_PAUSED:
         lv_label_set_text(playPauseButton, "z");
@@ -281,7 +309,13 @@ void onXTouchPrintStatus(lv_event_t *e)
         lv_obj_add_flag(comp_homeComponent[UI_COMP_HOMECOMPONENT_MAINSCREENLEFT_MAINSCREENCENTRAL], LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(comp_homeComponent[UI_COMP_HOMECOMPONENT_MAINSCREENLEFT_MAINSCREENIDLE], LV_OBJ_FLAG_HIDDEN);
         lv_obj_t *statusCaption = ui_comp_get_child(ui_mainStatusComponent, UI_COMP_MAINSCREENSTATUS_MAINSCREENSTATUSCAPTION);
-        lv_label_set_text(statusCaption, xtouch_device_get_print_state());
+        if (isPrinterNoticeActive()) {
+            lv_obj_set_style_text_color(statusCaption, lv_color_hex(0x59D5E8), 0);
+            lv_label_set_text_fmt(statusCaption, XTOUCH_TEXT_SWITCHING_PRINTER, xtouch_printer_name());
+        } else {
+            lv_obj_set_style_text_color(statusCaption, lv_color_white(), 0);
+            lv_label_set_text(statusCaption, xtouch_device_get_print_state());
+        }
         lv_obj_add_state(dropDown, LV_STATE_DISABLED);
         break;
     }
@@ -297,7 +331,7 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
 {
 
     lv_obj_t *cui_homeComponent;
-    cui_homeComponent = lv_obj_create(ui_homeScreen);
+    cui_homeComponent = lv_obj_create(comp_parent);
     lv_obj_set_width(cui_homeComponent, 272);
     lv_obj_set_height(cui_homeComponent, lv_pct(100));
     lv_obj_set_x(cui_homeComponent, 386);
@@ -382,9 +416,23 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_scrollbar_mode(cui_mainScreenCameraIcon, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_text_font(cui_mainScreenCameraIcon, &ui_font_xlcdmin, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_left(cui_mainScreenCameraIcon, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_right(cui_mainScreenCameraIcon, 32, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_right(cui_mainScreenCameraIcon, 4, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_top(cui_mainScreenCameraIcon, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_bottom(cui_mainScreenCameraIcon, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_obj_t *amsIcon = lv_obj_create(cui_mainScreenStatusBar);
+    lv_obj_remove_style_all(amsIcon);
+    lv_obj_set_size(amsIcon, 25, 18);
+    lv_obj_set_style_bg_color(amsIcon, lv_color_hex(0x161616), 0);
+    lv_obj_set_style_bg_opa(amsIcon, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(amsIcon, 3, 0);
+    lv_obj_set_style_border_width(amsIcon, 1, 0);
+    lv_obj_set_style_border_color(amsIcon, lv_color_hex(bambuStatus.ams ? 0x74D34A : 0x777777), 0);
+    lv_obj_set_style_pad_all(amsIcon, 1, 0);
+    lv_obj_clear_flag(amsIcon, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(amsIcon, draw_ams_icon, LV_EVENT_DRAW_MAIN_END, NULL);
+    lv_obj_add_event_cb(amsIcon, onXTouchAMS, LV_EVENT_MSG_RECEIVED, NULL);
+    lv_msg_subsribe_obj(XTOUCH_ON_AMS, amsIcon, NULL);
 
     lv_obj_t *cui_mainScreenAMS;
     cui_mainScreenAMS = lv_obj_create(cui_mainScreenStatusBar);
@@ -408,7 +456,10 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_pad_column(cui_mainScreenAMS, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(cui_mainScreenAMS, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(cui_mainScreenAMS, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_add_flag(cui_mainScreenAMS, LV_OBJ_FLAG_HIDDEN);
+    /* Fixed device slots, independent of the connected printer's AMS. */
+    lv_obj_set_width(cui_mainScreenAMS, 0);
+    lv_obj_set_flex_grow(cui_mainScreenWifiIcon, 0);
+    lv_obj_set_flex_grow(cui_mainScreenCameraIcon, 0);
 
     lv_obj_t *cui_mainScreenAMSColor0;
     cui_mainScreenAMSColor0 = lv_obj_create(cui_mainScreenAMS);
@@ -669,7 +720,7 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_label_set_text(cui_mainScreenTimeLeft, "N/A");
     lv_obj_clear_flag(cui_mainScreenTimeLeft, LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_CHAIN); /// Flags
     lv_obj_set_scrollbar_mode(cui_mainScreenTimeLeft, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_text_font(cui_mainScreenTimeLeft, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(cui_mainScreenTimeLeft, LV_FONT_DEFAULT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *cui_mainScreenController2;
     cui_mainScreenController2 = lv_obj_create(cui_mainScreenPlayer);
@@ -712,7 +763,7 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_label_set_text(cui_mainScreenLayer, "100/255");
     lv_obj_clear_flag(cui_mainScreenLayer, LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_CHAIN); /// Flags
     lv_obj_set_scrollbar_mode(cui_mainScreenLayer, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_text_font(cui_mainScreenLayer, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(cui_mainScreenLayer, LV_FONT_DEFAULT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *cui_mainScreenCentral;
     cui_mainScreenCentral = lv_obj_create(cui_mainScreenLeft);
@@ -747,10 +798,9 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
 
     lv_obj_t *cui_mainScreenSpeedDropDown;
     cui_mainScreenSpeedDropDown = lv_dropdown_create(cui_mainScreenCentral);
-    lv_dropdown_set_options(cui_mainScreenSpeedDropDown, "Silent\nStandard\nSport\nLudicrous");
+    lv_dropdown_set_options(cui_mainScreenSpeedDropDown, XTOUCH_TEXT_SPEED_OPTIONS);
     lv_obj_set_width(cui_mainScreenSpeedDropDown, 150);
     lv_obj_set_height(cui_mainScreenSpeedDropDown, LV_SIZE_CONTENT);           /// 1
-    lv_obj_add_state(cui_mainScreenSpeedDropDown, LV_STATE_PRESSED);           /// States
     lv_obj_add_flag(cui_mainScreenSpeedDropDown, LV_OBJ_FLAG_SCROLL_ON_FOCUS); /// Flags
     lv_obj_set_style_bg_color(cui_mainScreenSpeedDropDown, lv_color_hex(0x444444), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(cui_mainScreenSpeedDropDown, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -902,7 +952,7 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_height(cui_mainScreenNozzleTempValue, LV_SIZE_CONTENT); /// 1
     lv_obj_set_align(cui_mainScreenNozzleTempValue, LV_ALIGN_CENTER);
     lv_label_set_text(cui_mainScreenNozzleTempValue, "--");
-    lv_obj_set_style_text_font(cui_mainScreenNozzleTempValue, &lv_font_montserrat_28, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(cui_mainScreenNozzleTempValue, XTOUCH_FONT_NUMERIC, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *cui_mainScreenBedTemp;
     cui_mainScreenBedTemp = lv_obj_create(cui_mainScreenTemps);
@@ -944,7 +994,7 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_height(cui_mainScreenBedTempValue, LV_SIZE_CONTENT); /// 1
     lv_obj_set_align(cui_mainScreenBedTempValue, LV_ALIGN_CENTER);
     lv_label_set_text(cui_mainScreenBedTempValue, "--");
-    lv_obj_set_style_text_font(cui_mainScreenBedTempValue, &lv_font_montserrat_28, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(cui_mainScreenBedTempValue, XTOUCH_FONT_NUMERIC, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *cui_mainScreenChamberTemp;
     cui_mainScreenChamberTemp = lv_obj_create(cui_mainScreenTemps);
@@ -989,7 +1039,23 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_height(cui_mainScreenChamberTempValue, LV_SIZE_CONTENT); /// 1
     lv_obj_set_align(cui_mainScreenChamberTempValue, LV_ALIGN_CENTER);
     lv_label_set_text(cui_mainScreenChamberTempValue, "--");
-    lv_obj_set_style_text_font(cui_mainScreenChamberTempValue, &lv_font_montserrat_28, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(cui_mainScreenChamberTempValue, XTOUCH_FONT_NUMERIC, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_obj_t *slots[4] = {cui_mainScreenAMSColor0, cui_mainScreenAMSColor1,
+                         cui_mainScreenAMSColor2, cui_mainScreenAMSColor3};
+    const uint32_t colors[4] = {0xFFFFFF, 0xFF0000, 0x00FF00, 0x0000FF};
+    for (uint8_t i = 0; i < XTOUCH_MAX_PRINTERS; i++) {
+        bool configured = xtouch_printer_configured(i);
+        lv_obj_set_width(slots[i], 0);
+        lv_obj_set_style_bg_color(slots[i], lv_color_hex(configured ? colors[i] : 0x777777), 0);
+        lv_obj_set_style_border_width(slots[i], configured && i == xtouch_printer_active() ? 2 : 0, 0);
+        lv_obj_set_style_border_color(slots[i], lv_color_hex(0xFFB300), 0);
+        if (configured) {
+            lv_obj_add_flag(slots[i], LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_set_ext_click_area(slots[i], 3);
+            lv_obj_add_event_cb(slots[i], on_printer_slot, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+        }
+    }
 
     lv_obj_t **children = lv_mem_alloc(sizeof(lv_obj_t *) * _UI_COMP_HOMECOMPONENT_NUM);
     children[UI_COMP_HOMECOMPONENT_HOMECOMPONENT] = cui_homeComponent;
@@ -1059,8 +1125,6 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_add_event_cb(cui_mainScreenNozzleTempIcon, onXTouchBedTempTarget, LV_EVENT_MSG_RECEIVED, NULL);
     lv_msg_subsribe_obj(XTOUCH_ON_NOZZLE_TARGET_TEMP, cui_mainScreenNozzleTempIcon, NULL);
 
-    lv_obj_add_event_cb(cui_mainScreenAMS, onXTouchAMS, LV_EVENT_MSG_RECEIVED, NULL);
-    lv_msg_subsribe_obj(XTOUCH_ON_AMS, cui_mainScreenAMS, NULL);
 
     lv_obj_add_event_cb(cui_mainScreenWifiIcon, onXTouchWifiSignal, LV_EVENT_MSG_RECEIVED, NULL);
     lv_msg_subsribe_obj(XTOUCH_ON_WIFI_SIGNAL, cui_mainScreenWifiIcon, NULL);

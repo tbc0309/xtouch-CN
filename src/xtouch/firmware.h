@@ -16,8 +16,10 @@ struct SemVer
 
 bool parseSemVer(const char *version, SemVer &semver)
 {
-    int parsed = sscanf(version, "%d.%d.%d", &semver.major, &semver.minor, &semver.patch);
-    return parsed == 3;
+    if (!version) return false;
+    char suffix;
+    int parsed = sscanf(version, "%d.%d.%d%c", &semver.major, &semver.minor, &semver.patch, &suffix);
+    return parsed == 3 && semver.major >= 0 && semver.minor >= 0 && semver.patch >= 0;
 }
 
 int compareSemVer(const SemVer &v1, const SemVer &v2)
@@ -52,172 +54,101 @@ bool isSemVerEqualTo(const SemVer &v1, const SemVer &v2)
     return compareSemVer(v1, v2) == 0;
 }
 
-#define XTOUCH_FIRMWARE_DOWNLOAD_RETRIES 5
-byte xtouch_firmware_updateDownloadRetries = 0;
-
-bool xtouch_firmware_semverNeedsUpdate(const char *compare)
+static bool xtouch_firmware_manifest_valid(JsonDocument &doc)
 {
-    SemVer version1, version2;
-
-    if (parseSemVer(XTOUCH_FIRMWARE_VERSION, version1) && parseSemVer(compare, version2))
-    {
-        if (isSemVerGreaterThan(version2, version1))
-        {
-            return true;
-        }
-        return false;
-    }
-
-    return false;
+    const char *version = doc["version"] | "";
+    const char *url = doc["url"] | "";
+    const char *md5 = doc["md5"] | "";
+    SemVer parsed;
+    if (!parseSemVer(version, parsed) || strlen(md5) != 32 ||
+        !String(url).startsWith("https://github.com/tbc0309/xtouch-CN/releases/download/") ||
+        !String(url).endsWith("/xtouch-2.8.bin") ||
+        !doc["size"].is<unsigned>() || doc["size"].as<unsigned>() == 0 ||
+        doc["size"].as<unsigned>() > 1966080) return false;
+    for (unsigned i = 0; i < 32; i++) if (!isxdigit(md5[i])) return false;
+    return true;
 }
 
-void xtouch_firmware_onProgress(size_t currSize, size_t totalSize)
+void xtouch_firmware_onProgress(size_t current, size_t total)
 {
-    int16_t progress = (currSize * 100) / totalSize;
-    lv_label_set_text_fmt(introScreenCaption, LV_SYMBOL_CHARGE " Updating %d%%", progress);
+    if (!total) return;
+    lv_label_set_text_fmt(introScreenCaption, XTOUCH_TEXT_UPDATING_D, int(current * 100 / total));
     lv_timer_handler();
-    lv_task_handler();
 }
 
 void xtouch_firmware_checkOnlineFirmwareUpdate(void)
 {
-    if (!xTouchConfig.xTouchOTAEnabled)
-    {
+    if (!xTouchConfig.xTouchOTAEnabled) return;
+    lv_label_set_text(introScreenCaption, XTOUCH_TEXT_CHECKING_FOR_OTA_UPDATE);
+    lv_refr_now(NULL);
+    ConsoleInfo.printf("[OTA] checking current=%s\n", XTOUCH_FIRMWARE_VERSION);
+    if (!downloadFileToSDCard(xtouch_paths_firmware_ota_file, xtouch_paths_firmware_ota_json)) return;
+    DynamicJsonDocument doc = xtouch_filesystem_readJson(SD, xtouch_paths_firmware_ota_json);
+    SemVer current, remote;
+    if (!xtouch_firmware_manifest_valid(doc) || !parseSemVer(XTOUCH_FIRMWARE_VERSION, current) ||
+        !parseSemVer(doc["version"], remote)) {
+        ConsoleError.println("[OTA] invalid manifest");
+        SD.remove(xtouch_paths_firmware_ota_json);
         return;
     }
-
-    lv_label_set_text(introScreenCaption, LV_SYMBOL_CHARGE " Checking for OTA Update");
-    lv_timer_handler();
-    lv_task_handler();
-
-    bool hasOTAConfigFile = downloadFileToSDCard(xtouch_paths_firmware_ota_file, xtouch_paths_firmware_ota_json);
-
-    if (hasOTAConfigFile)
-    {
-
-        DynamicJsonDocument doc = xtouch_filesystem_readJson(SD, xtouch_paths_firmware_ota_json);
-        if (xtouch_firmware_semverNeedsUpdate(doc["version"]))
-        {
-
-            lv_label_set_text_fmt(introScreenCaption, LV_SYMBOL_CHARGE " Downloading Update %d%%", 0);
-            lv_timer_handler();
-            lv_task_handler();
-
-            bool xtouch_firmware_hasFirmwareUpdate = downloadFileToSDCard(
-                doc["url"],
-                xtouch_paths_firmware_ota_fw,
-                [](int progress)
-                {
-                    lv_label_set_text_fmt(introScreenCaption, LV_SYMBOL_CHARGE " Downloading Update %d%%", progress);
-                    lv_timer_handler();
-                    lv_task_handler();
-                },
-                [](int state)
-                {
-                    switch (state)
-                    {
-                    case -1:
-                        lv_label_set_text(introScreenCaption, LV_SYMBOL_CHARGE " Verifying Update");
-                        break;
-                    case 0:
-                        lv_label_set_text(introScreenCaption, LV_SYMBOL_CHARGE " Invalid Update MD5");
-                        break;
-                    case 1:
-                        lv_label_set_text(introScreenCaption, LV_SYMBOL_CHARGE " Update Verified");
-                        break;
-                    }
-                    lv_timer_handler();
-                    lv_task_handler();
-                },
-                doc["md5"]);
-
-            if (xtouch_firmware_hasFirmwareUpdate)
-            {
-                lv_label_set_text(introScreenCaption, LV_SYMBOL_OK " Update downloaded");
+    if (!isSemVerGreaterThan(remote, current)) {
+        ConsoleInfo.println("[OTA] already current");
+        SD.remove(xtouch_paths_firmware_ota_json);
+        return;
+    }
+    // Two bounded attempts; a failed update must never prevent normal startup.
+    for (unsigned attempt = 0; attempt < 2; attempt++) {
+        bool success = downloadFileToSDCard(doc["url"], xtouch_paths_firmware_ota_fw,
+            [](int progress) {
+                lv_label_set_text_fmt(introScreenCaption, XTOUCH_TEXT_DOWNLOADING_UPDATE_D, progress);
                 lv_timer_handler();
-                lv_task_handler();
-                delay(3000);
-                ESP.restart();
-            }
-            else
-            {
-                lv_label_set_text_fmt(introScreenCaption, LV_SYMBOL_WARNING " Failed to download update. Retry (%d/%d)", xtouch_firmware_updateDownloadRetries + 1, XTOUCH_FIRMWARE_DOWNLOAD_RETRIES);
-                lv_timer_handler();
-                lv_task_handler();
-                delay(32);
-                lv_timer_handler();
-                lv_task_handler();
-                delay(3000);
-                xtouch_firmware_updateDownloadRetries++;
-                if (xtouch_firmware_updateDownloadRetries == XTOUCH_FIRMWARE_DOWNLOAD_RETRIES)
-                {
-                    // we are unable to download correctly the file
-                    // disable OTA to be able to boot
-                    xTouchConfig.xTouchOTAEnabled = false;
-                    xtouch_settings_save();
-                    xtouch_filesystem_deleteFile(SD, xtouch_paths_firmware_ota_fw);
-                    xtouch_filesystem_deleteFile(SD, xtouch_paths_firmware_ota_json);
-                    ESP.restart();
-                }
-                else
-                {
-                    xtouch_firmware_checkOnlineFirmwareUpdate();
-                }
-            }
-        }
-        else
-        {
-            xtouch_filesystem_deleteFile(SD, xtouch_paths_firmware_ota_json);
+            }, NULL, doc["md5"], doc["size"]);
+        if (success) {
+            ConsoleInfo.println("[OTA] staged, rebooting to install");
+            delay(200);
+            ESP.restart();
         }
     }
-    else
-    {
-        lv_label_set_text(introScreenCaption, LV_SYMBOL_WARNING " Failed to download update");
-        lv_timer_handler();
-        lv_task_handler();
-        delay(3000);
-    }
+    SD.remove(xtouch_paths_firmware_ota_json);
+    lv_label_set_text(introScreenCaption, XTOUCH_TEXT_FAILED_TO_DOWNLOAD_UPDATE);
+    lv_refr_now(NULL);
 }
 
 void xtouch_firmware_checkFirmwareUpdate(void)
 {
-
-    if (xtouch_filesystem_exist(SD, xtouch_paths_firmware_ota_fw))
-    {
-        DynamicJsonDocument doc = xtouch_filesystem_readJson(SD, xtouch_paths_firmware_ota_json);
-        File firmware = xtouch_filesystem_open(SD, xtouch_paths_firmware_ota_fw);
-        Update.onProgress(xtouch_firmware_onProgress);
-        Update.begin(firmware.size(), U_FLASH);
-        if (doc.containsKey("md5"))
-        {
-            Update.setMD5(doc["md5"]);
-        }
-        Update.writeStream(firmware);
-        bool updateSucceeded = Update.end();
-        firmware.close();
-
-        if (updateSucceeded)
-        {
-            lv_label_set_text(introScreenCaption, LV_SYMBOL_OK " Update finished");
-            lv_timer_handler();
-            lv_task_handler();
-        }
-        else
-        {
-            lv_label_set_text(introScreenCaption, LV_SYMBOL_WARNING " Update error");
-            lv_timer_handler();
-            lv_task_handler();
-            delay(3000);
-            lv_label_set_text(introScreenCaption, LV_SYMBOL_TRASH " Deleting firmware file");
-            lv_timer_handler();
-            lv_task_handler();
-        }
-
-        xtouch_filesystem_deleteFile(SD, xtouch_paths_firmware_ota_json);
-        xtouch_filesystem_deleteFile(SD, xtouch_paths_firmware_ota_fw);
-
-        delay(2000);
-        ESP.restart();
+    if (!SD.exists(xtouch_paths_firmware_ota_fw)) return;
+    DynamicJsonDocument doc = xtouch_filesystem_readJson(SD, xtouch_paths_firmware_ota_json);
+    bool verified = xtouch_firmware_manifest_valid(doc);
+    File firmware = SD.open(xtouch_paths_firmware_ota_fw, FILE_READ);
+    // Plain firmware.bin on SD remains supported; an OTA manifest, when present,
+    // must be valid and match the complete image before touching flash.
+    bool manifestPresent = SD.exists(xtouch_paths_firmware_ota_json);
+    bool valid = firmware && firmware.size() > 0 && firmware.size() <= 1966080 && firmware.peek() == 0xE9;
+    if (manifestPresent) valid = valid && verified && firmware.size() == doc["size"].as<unsigned>();
+    if (valid && manifestPresent) {
+        MD5Builder md5;
+        md5.begin();
+        md5.addStream(firmware, firmware.size());
+        md5.calculate();
+        valid = md5.toString().equalsIgnoreCase(doc["md5"].as<const char *>());
+        firmware.seek(0);
     }
+    bool installed = false;
+    if (valid) {
+        Update.onProgress(xtouch_firmware_onProgress);
+        if (Update.begin(firmware.size(), U_FLASH)) {
+            if (manifestPresent) Update.setMD5(doc["md5"]);
+            size_t written = Update.writeStream(firmware);
+            installed = written == firmware.size() && Update.end();
+            if (!installed) Update.abort();
+        }
+    }
+    firmware.close();
+    SD.remove(xtouch_paths_firmware_ota_json);
+    SD.remove(xtouch_paths_firmware_ota_fw);
+    ConsoleInfo.printf("[OTA] install %s\n", installed ? "SUCCESS" : "REJECTED");
+    lv_label_set_text(introScreenCaption, installed ? XTOUCH_TEXT_UPDATE_FINISHED : XTOUCH_TEXT_UPDATE_ERROR);
+    lv_refr_now(NULL);
+    if (installed) { delay(300); ESP.restart(); }
 }
 #endif

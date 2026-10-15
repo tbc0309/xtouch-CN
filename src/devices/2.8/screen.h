@@ -147,7 +147,7 @@ void xtouch_screen_touchRead(lv_indev_drv_t *indev_driver, lv_indev_data_t *data
 
     if (x_touch_touchScreen.tirqTouched() && x_touch_touchScreen.touched())
     {
-        lv_timer_reset(xtouch_screen_onScreenOffTimer);
+        if (xtouch_screen_onScreenOffTimer) lv_timer_reset(xtouch_screen_onScreenOffTimer);
         // dont pass first touch after power on
         if (xtouch_screen_touchFromPowerOff)
         {

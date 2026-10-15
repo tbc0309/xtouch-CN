@@ -8,7 +8,7 @@ bool xtouch_wifi_setup()
     DynamicJsonDocument wifiConfig = xtouch_load_config();
     if (wifiConfig.isNull() || !wifiConfig.containsKey("ssid") || !wifiConfig.containsKey("pwd"))
     {
-        lv_label_set_text(introScreenCaption, wifiConfig.isNull() ? LV_SYMBOL_SD_CARD " Missing provisioning.json" : LV_SYMBOL_WARNING " Inaccurate provisioning.json");
+        lv_label_set_text(introScreenCaption, wifiConfig.isNull() ? XTOUCH_TEXT_MISSING_PROVISIONING_JSON : XTOUCH_TEXT_INACCURATE_PROVISIONING_JSON);
         lv_obj_set_style_text_color(introScreenCaption, lv_color_hex(0xFF0000), LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_timer_handler();
         lv_task_handler();
@@ -24,7 +24,7 @@ bool xtouch_wifi_setup()
     WiFi.begin(ssidB64String.c_str(), ssidPWDString.c_str());
     ConsoleInfo.println(F("[XTOUCH][CONNECTION] Connecting to WiFi .."));
 
-    lv_label_set_text(introScreenCaption, LV_SYMBOL_WIFI " Connecting");
+    lv_label_set_text(introScreenCaption, XTOUCH_TEXT_CONNECTING);
     lv_obj_set_style_text_color(introScreenCaption, lv_color_hex(0x555555), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_timer_handler();
     lv_task_handler();
@@ -41,12 +41,12 @@ bool xtouch_wifi_setup()
         switch (status)
         {
         case WL_IDLE_STATUS:
-            statusText = LV_SYMBOL_WIFI " Connecting";
+            statusText = XTOUCH_TEXT_CONNECTING;
             statusColor = lv_color_hex(0x555555);
             break;
 
         case WL_NO_SSID_AVAIL:
-            statusText = LV_SYMBOL_WARNING " Bad SSID Check WiFi credentials";
+            statusText = XTOUCH_TEXT_BAD_SSID_CHECK_WIFI_CREDENTIALS;
             statusColor = lv_color_hex(0xff0000);
             reboot = true;
             break;
@@ -56,7 +56,7 @@ bool xtouch_wifi_setup()
 
         case WL_CONNECT_FAILED:
         case WL_DISCONNECTED:
-            statusText = LV_SYMBOL_WARNING " Check your WiFi credentials";
+            statusText = XTOUCH_TEXT_CHECK_YOUR_WIFI_CREDENTIALS;
             statusColor = lv_color_hex(0xff0000);
             reboot = true;
             break;
@@ -65,7 +65,7 @@ bool xtouch_wifi_setup()
             break;
         }
 
-        if (statusText != "")
+        if (statusText[0])
         {
 
             lv_label_set_text(introScreenCaption, statusText);
@@ -78,7 +78,7 @@ bool xtouch_wifi_setup()
         if (reboot)
         {
             delay(3000);
-            lv_label_set_text(introScreenCaption, LV_SYMBOL_REFRESH " REBOOTING");
+            lv_label_set_text(introScreenCaption, XTOUCH_TEXT_REBOOTING);
             lv_timer_handler();
             lv_task_handler();
             ESP.restart();
@@ -89,7 +89,7 @@ bool xtouch_wifi_setup()
     WiFi.setTxPower(WIFI_POWER_19_5dBm); // https://github.com/G6EJD/ESP32-8266-Adjust-WiFi-RF-Power-Output/blob/main/README.md
 
     delay(1000);
-    lv_label_set_text(introScreenCaption, LV_SYMBOL_WIFI " Connected");
+    lv_label_set_text(introScreenCaption, XTOUCH_TEXT_CONNECTED);
     lv_timer_handler();
     lv_task_handler();
     delay(1000);

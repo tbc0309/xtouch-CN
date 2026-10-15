@@ -78,6 +78,7 @@ DynamicJsonDocument xtouch_filesystem_readJson(fs::FS &fs, const char *filename,
     {
         ConsoleError.print(F("[XTouch][SD] Error Parsing JSON File: "));
         ConsoleError.println(filename);
+        doc.clear(); // Never use partially parsed credentials or device lists.
     }
 
     configFile.close();

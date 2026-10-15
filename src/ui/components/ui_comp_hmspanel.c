@@ -57,7 +57,7 @@ const char *ui_hmsPanel_xtouch_errors_getHMSError(unsigned long long prefix)
 const char *ui_hmsPanel_deviceHMSError(unsigned long long prefix)
 {
     char prefix_str[9];
-    sprintf(prefix_str, "%08X", (unsigned long long)prefix);
+    snprintf(prefix_str, sizeof(prefix_str), "%08X", (unsigned int)prefix);
 
     return xtouch_errors_getDeviceError(prefix_str);
 }
@@ -78,7 +78,7 @@ void ui_hmsPanelComponent_onXTouchHMSError(lv_event_t *e)
                 bool hasRetry = xtouch_errors_deviceErrorHasRetry(ui_hmsPanel_currentErrorString);
                 bool hasDone = xtouch_errors_deviceErrorHasDone(ui_hmsPanel_currentErrorString);
                 const char *error = ui_hmsPanel_deviceHMSError(ui_hmsPanel_currentError);
-                if (error != "")
+                if (error && error[0])
                 {
                     ui_hmsPanel_show(error,
                                      hasRetry ? (hasDone ? DONE_AND_RETRY : CONFIRM_AND_RETRY) : (hasDone ? CONFIRM_AND_DONE : ONLY_CONFIRM));
@@ -96,7 +96,7 @@ void ui_hmsPanelComponent_onXTouchHMSError(lv_event_t *e)
                 switch (reversed_msg_level)
                 {
                 case HMS_INFO:
-                    if (error != "")
+                    if (error && error[0])
                     {
                         ui_hmsPanel_show(error, ONLY_CONFIRM);
                     }
@@ -207,7 +207,7 @@ lv_obj_t *ui_hmsPanel_create(lv_obj_t *comp_parent)
 
     lv_obj_set_height(cui_hmsPanelCaption, LV_SIZE_CONTENT); /// 1
     lv_obj_set_flex_grow(cui_hmsPanelCaption, 1);
-    lv_label_set_text(cui_hmsPanelCaption, "Are you sure?");
+    lv_label_set_text(cui_hmsPanelCaption, XTOUCH_TEXT_ARE_YOU_SURE);
     lv_label_set_long_mode(cui_hmsPanelCaption, LV_LABEL_LONG_WRAP);
     lv_obj_clear_flag(cui_hmsPanelCaption, LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_CHAIN); /// Flags
     lv_obj_set_scrollbar_mode(cui_hmsPanelCaption, LV_SCROLLBAR_MODE_OFF);
@@ -240,10 +240,10 @@ lv_obj_t *ui_hmsPanel_create(lv_obj_t *comp_parent)
     cui_hmsPanelRetryButtonLabel = lv_label_create(cui_hmsPanelRetryButton);
     lv_obj_set_width(cui_hmsPanelRetryButtonLabel, LV_SIZE_CONTENT);  /// 1
     lv_obj_set_height(cui_hmsPanelRetryButtonLabel, LV_SIZE_CONTENT); /// 1
-    lv_label_set_text(cui_hmsPanelRetryButtonLabel, "Retry");
+    lv_label_set_text(cui_hmsPanelRetryButtonLabel, XTOUCH_TEXT_RETRY);
     lv_obj_clear_flag(cui_hmsPanelRetryButtonLabel, LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_CHAIN); /// Flags
     lv_obj_set_scrollbar_mode(cui_hmsPanelRetryButtonLabel, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_text_font(cui_hmsPanelRetryButtonLabel, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(cui_hmsPanelRetryButtonLabel, LV_FONT_DEFAULT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *cui_hmsPanelDoneButton;
     cui_hmsPanelDoneButton = lv_label_create(cui_hmsPanelContainer);
@@ -269,10 +269,10 @@ lv_obj_t *ui_hmsPanel_create(lv_obj_t *comp_parent)
     cui_hmsPanelDoneButtonLabel = lv_label_create(cui_hmsPanelDoneButton);
     lv_obj_set_width(cui_hmsPanelDoneButtonLabel, LV_SIZE_CONTENT);  /// 1
     lv_obj_set_height(cui_hmsPanelDoneButtonLabel, LV_SIZE_CONTENT); /// 1
-    lv_label_set_text(cui_hmsPanelDoneButtonLabel, "Done");
+    lv_label_set_text(cui_hmsPanelDoneButtonLabel, XTOUCH_TEXT_DONE);
     lv_obj_clear_flag(cui_hmsPanelDoneButtonLabel, LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_CHAIN); /// Flags
     lv_obj_set_scrollbar_mode(cui_hmsPanelDoneButtonLabel, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_text_font(cui_hmsPanelDoneButtonLabel, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(cui_hmsPanelDoneButtonLabel, LV_FONT_DEFAULT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *cui_hmsPanelConfirmButton;
     cui_hmsPanelConfirmButton = lv_label_create(cui_hmsPanelContainer);
@@ -298,10 +298,10 @@ lv_obj_t *ui_hmsPanel_create(lv_obj_t *comp_parent)
     cui_hmsPanelConfirmButtonLabel = lv_label_create(cui_hmsPanelConfirmButton);
     lv_obj_set_width(cui_hmsPanelConfirmButtonLabel, LV_SIZE_CONTENT);  /// 1
     lv_obj_set_height(cui_hmsPanelConfirmButtonLabel, LV_SIZE_CONTENT); /// 1
-    lv_label_set_text(cui_hmsPanelConfirmButtonLabel, "Confirm");
+    lv_label_set_text(cui_hmsPanelConfirmButtonLabel, XTOUCH_TEXT_CONFIRM);
     lv_obj_clear_flag(cui_hmsPanelConfirmButtonLabel, LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_CHAIN); /// Flags
     lv_obj_set_scrollbar_mode(cui_hmsPanelConfirmButtonLabel, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_text_font(cui_hmsPanelConfirmButtonLabel, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(cui_hmsPanelConfirmButtonLabel, LV_FONT_DEFAULT, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t **children = lv_mem_alloc(sizeof(lv_obj_t *) * _UI_COMP_HMSPANEL_NUM);
     children[UI_COMP_HMSPANEL_HMSPANEL] = cui_hmsPanel;

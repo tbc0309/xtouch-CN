@@ -1,0 +1,37 @@
+{
+  "ssid": "YOUR_WIFI",
+  "pwd": "YOUR_WIFI_PASSWORD",
+  "timeout": 5000,
+  "coldboot": 5000,
+  "activePrinter": 0,
+  "printers": [
+    {
+      "name": "P1S-White",
+      "host": "192.168.1.101",
+      "accessCode": "12345678",
+      "serialNumber": "REPLACE_WITH_SERIAL_1",
+      "printerModel": "C12"
+    },
+    {
+      "name": "P1P-Red",
+      "host": "192.168.1.102",
+      "accessCode": "12345678",
+      "serialNumber": "REPLACE_WITH_SERIAL_2",
+      "printerModel": "C11"
+    },
+    {
+      "name": "X1C-Green",
+      "host": "192.168.1.103",
+      "accessCode": "12345678",
+      "serialNumber": "REPLACE_WITH_SERIAL_3",
+      "printerModel": "3DPrinter-X1-Carbon"
+    },
+    {
+      "name": "P1S-Blue",
+      "host": "192.168.1.104",
+      "accessCode": "12345678",
+      "serialNumber": "REPLACE_WITH_SERIAL_4",
+      "printerModel": "C12"
+    }
+  ]
+}

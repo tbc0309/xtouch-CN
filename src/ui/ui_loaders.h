@@ -10,6 +10,8 @@ extern "C"
 
     void fillScreenData(int screen);
     void loadScreen(int screen);
+    void showPrinterNotice(void);
+    bool isPrinterNoticeActive(void);
     void initTopLayer();
 
 #ifdef __cplusplus

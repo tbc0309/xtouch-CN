@@ -22,7 +22,9 @@ extern "C"
 #include "lvgl.h"
 #endif
 
+#include "i18n/strings.h"
 #include "ui_msgs.h"
+#include "xtouch/printers.h"
 #include "ui_helpers.h"
 #include "ui_loaders.h"
 #include "components/ui_comp.h"

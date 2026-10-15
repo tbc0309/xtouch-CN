@@ -3,7 +3,9 @@
 
 void xtouch_settings_save(bool onlyRoot = false)
 {
-    DynamicJsonDocument doc(256);
+    DynamicJsonDocument doc(384);
+    const char *languages[] = {"zh", "zh-TW", "en"};
+    doc["language"] = languages[xtouch_language_get()];
     doc["backlight"] = xTouchConfig.xTouchBacklightLevel;
     doc["tftOff"] = xTouchConfig.xTouchTFTOFFValue;
     doc["tftInvert"] = xTouchConfig.xTouchTFTInvert;
@@ -35,6 +37,8 @@ void xtouch_settings_loadSettings()
     }
 
     DynamicJsonDocument settings = xtouch_filesystem_readJson(SD, xtouch_paths_settings);
+    const char *language = settings["language"] | "zh";
+    xtouch_language_set(strcmp(language, "en") == 0 ? 2 : strcmp(language, "zh-TW") == 0 ? 1 : 0);
 
     xTouchConfig.xTouchBacklightLevel = settings.containsKey("backlight") ? settings["backlight"].as<int>() : 128;
     xTouchConfig.xTouchTFTOFFValue = settings.containsKey("tftOff") ? settings["tftOff"].as<int>() : 15;

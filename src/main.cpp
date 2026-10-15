@@ -70,5 +70,13 @@ void loop()
 {
   lv_timer_handler();
   lv_task_handler();
+  if (xtouch_language_apply_request()) {
+    xtouch_settings_save();
+    ui_confirmPanel_hide();
+    lv_obj_del(ui_confirmComponent);
+    lv_obj_del(ui_hmsComponent);
+    initTopLayer();
+    loadScreen(4);
+  }
   xtouch_mqtt_loop();
 }

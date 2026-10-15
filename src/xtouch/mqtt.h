@@ -26,10 +26,14 @@ String xtouch_mqtt_report_topic;
 #define XTOUCH_MQTT_SERVER_JSON_PARSE_SIZE 8192
 
 /* ---------------------------------------------- */
-bool xtouch_mqtt_firstConnectionDone = false;
-int xtouch_mqtt_connection_timeout_count = 5;
-int xtouch_mqtt_connection_fail_count = 5;
-unsigned long long xtouch_mqtt_lastPushStatus = 0;
+uint32_t xtouch_mqtt_lastPushStatus = 0;
+static uint32_t xtouch_mqtt_nextAttempt = 0;
+static uint32_t xtouch_mqtt_retryMs = 5000;
+static bool xtouch_mqtt_hasStatus = false;
+
+bool xtouch_printer_online(void) {
+    return xtouch_pubSubClient.connected() && xtouch_mqtt_hasStatus;
+}
 
 XtouchAutoGrowBufferStream stream;
 
@@ -42,7 +46,6 @@ void xtouch_mqtt_sendMsg(XTOUCH_MESSAGE message, unsigned long long data = 0)
 
 void xtouch_mqtt_topic_setup()
 {
-    DynamicJsonDocument mqttConfig = xtouch_load_config();
     String xtouch_device_topic = String("device/") + xTouchConfig.xTouchSerialNumber;
     xtouch_mqtt_request_topic = xtouch_device_topic + String("/request");
     xtouch_mqtt_report_topic = xtouch_device_topic + String("/report");
@@ -79,6 +82,7 @@ void xtouch_mqtt_update_slice_info(const char *project_id, const char *profile_i
 void xtouch_mqtt_processPushStatus(JsonDocument &incomingJson)
 {
     xtouch_mqtt_lastPushStatus = millis();
+    xtouch_mqtt_hasStatus = true;
     ConsoleDebug.println(F("[XTouch][MQTT] ProcessPushStatus"));
 
     if (incomingJson != NULL && incomingJson.containsKey("print"))
@@ -689,6 +693,11 @@ void xtouch_mqtt_parseMessage(char *topic, byte *payload, unsigned int length, b
 
 void xtouch_pubSubClient_streamCallback(char *topic, byte *payload, unsigned int length)
 {
+    // Discard late packets from the previous device after a switch.
+    if (strcmp(topic, xtouch_mqtt_report_topic.c_str()) != 0 || xtouch_printer_switch_pending()) {
+        stream.flush();
+        return;
+    }
     xtouch_mqtt_parseMessage(topic, (byte *)stream.get_buffer(), stream.current_length(), 0);
 
     if (stream.includes("\"ams\""))
@@ -715,116 +724,68 @@ const char *xtouch_mqtt_generateRandomKey(int keyLength)
     return key;
 }
 
-void xtouch_mqtt_onMqttReady()
-{
-    if (!xtouch_mqtt_firstConnectionDone)
-    {
-        loadScreen(0);
-        xtouch_screen_startScreenTimer();
-    }
-    xtouch_mqtt_firstConnectionDone = true;
-}
-
+// One bounded connection attempt; the main loop services touch between retries.
 void xtouch_mqtt_connect()
 {
-
-    ConsoleInfo.println(F("[XTouch][MQTT] Connecting"));
-
-    if (!xtouch_mqtt_firstConnectionDone)
-    {
-        lv_label_set_text(introScreenCaption, LV_SYMBOL_CHARGE " Connecting to Cloud MQTT");
-        lv_timer_handler();
-        lv_task_handler();
-        delay(32);
-    }
-
-    xtouch_mqtt_firstConnectionDone = false;
-
-    while (!xtouch_pubSubClient.connected())
-    {
-        String clientId = "XTOUCH-CLIENT-" + String(xtouch_mqtt_generateRandomKey(16));
-        if (xtouch_pubSubClient.connect("clientId.c_str()", "bblp", xTouchConfig.xTouchAccessCode))
-        {
-            ConsoleInfo.println(F("[XTouch][MQTT] ---- CONNECTED ----"));
-
-            xtouch_pubSubClient.subscribe(xtouch_mqtt_report_topic.c_str());
+    if (!xtouch_printer_configured(xtouch_active_printer) ||
+        (int32_t)(millis() - xtouch_mqtt_nextAttempt) < 0) return;
+    String clientId = "XTOUCH-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+    bool transportReady = xtouch_wiFiClientSecure.connect(xTouchConfig.xTouchHost, 8883, 2000) == 1;
+    if (transportReady) xtouch_wiFiClientSecure.setTimeout(2000);
+    bool connected = transportReady &&
+        xtouch_pubSubClient.connect(clientId.c_str(), "bblp", xTouchConfig.xTouchAccessCode);
+    if (connected) {
+        if (!xtouch_pubSubClient.subscribe(xtouch_mqtt_report_topic.c_str())) {
+            xtouch_pubSubClient.disconnect();
+        } else {
+            xtouch_mqtt_retryMs = 5000;
+            xtouch_mqtt_lastPushStatus = millis();
             xtouch_device_pushall();
             xtouch_device_get_version();
-            xtouch_mqtt_onMqttReady();
-            xtouch_mqtt_lastPushStatus = millis();
-            break;
+            ConsoleInfo.printf("[XTouch][PRINTER] slot=%u connected\n", xtouch_active_printer + 1);
         }
-        else
-        {
-            ConsoleError.printf("[XTouch][MQTT] ---- CONNECTION FAIL ----: %d\n", xtouch_pubSubClient.state());
-
-            switch (xtouch_pubSubClient.state())
-            {
-
-            case -4: // MQTT_CONNECTION_TIMEOUT
-                xtouch_mqtt_connection_timeout_count--;
-                if (xtouch_mqtt_connection_timeout_count == 0)
-                {
-                    ESP.restart();
-                }
-                break;
-            case -2: // MQTT_CONNECT_FAILED
-
-                if (!xtouch_mqtt_firstConnectionDone)
-                {
-                    xtouch_mqtt_connection_fail_count--;
-                    if (xtouch_mqtt_connection_fail_count == 0)
-                    {
-                        if (!xtouch_mqtt_firstConnectionDone)
-                        {
-                            lv_label_set_text(introScreenCaption, LV_SYMBOL_WARNING " MQTT ERROR");
-                            lv_timer_handler();
-                            lv_task_handler();
-                            delay(3000);
-                            lv_label_set_text(introScreenCaption, LV_SYMBOL_REFRESH " REBOOTING");
-                            lv_timer_handler();
-                            lv_task_handler();
-                        }
-                        ESP.restart();
-                    }
-                }
-                break;
-            case -3: // MQTT_CONNECTION_LOST
-            case -1: // MQTT_DISCONNECTED
-
-                break;
-            case 1: // MQTT BAD_PROTOCOL
-            case 2: // MQTT BAD_CLIENT_ID
-            case 3: // MQTT UNAVAILABLE
-            case 4: // MQTT BAD_CREDENTIALS
-            case 5: // MQTT UNAUTHORIZED
-                if (!xtouch_mqtt_firstConnectionDone)
-                {
-                    lv_label_set_text(introScreenCaption, LV_SYMBOL_WARNING " MQTT ERROR");
-                    lv_timer_handler();
-                    lv_task_handler();
-                    delay(3000);
-                    lv_label_set_text(introScreenCaption, LV_SYMBOL_REFRESH " REBOOTING");
-                    lv_timer_handler();
-                    lv_task_handler();
-                }
-                // cloud.clearDeviceList();
-                // cloud.clearPairList();
-                // cloud.clearTokens();
-                ESP.restart();
-
-                break;
-            };
-        }
-        lv_timer_handler();
-        lv_task_handler();
-        delay(32);
     }
+    if (!xtouch_pubSubClient.connected()) {
+        xtouch_wiFiClientSecure.stop();
+        ConsoleError.printf("[XTouch][PRINTER] slot=%u retry state=%d\n",
+                            xtouch_active_printer + 1, xtouch_pubSubClient.state());
+        xtouch_mqtt_nextAttempt = millis() + xtouch_mqtt_retryMs;
+        xtouch_mqtt_retryMs = min(xtouch_mqtt_retryMs * 2, uint32_t(30000));
+    }
+    xtouch_mqtt_sendMsg(XTOUCH_ON_PRINT_STATUS);
+}
+
+static void xtouch_mqtt_switch_printer()
+{
+    if (xtouch_pending_printer < 0) return;
+    uint8_t slot = xtouch_pending_printer;
+    xtouch_pubSubClient.disconnect();
+    xtouch_wiFiClientSecure.stop();
+    stream.flush();
+    xtouch_printer_apply(slot);
+    xtouch_pending_printer = -1;
+    memset(&bambuStatus, 0, sizeof(bambuStatus));
+    memset(&controlMode, 0, sizeof(controlMode));
+    controlMode.inc = 1;
+    lastPrintState = "IDLE";
+    frontIndex = rearIndex = queueSize = 0;
+    ui_hmsPanel_hide();
+    ui_confirmPanel_hide();
+    xtouch_mqtt_hasStatus = false;
+    xtouch_mqtt_retryMs = 5000;
+    // Keep network handshakes from blocking the two-second switch notice.
+    xtouch_mqtt_nextAttempt = millis() + 2100;
+    xtouch_mqtt_topic_setup();
+    xtouch_pubSubClient.setServer(xTouchConfig.xTouchHost, 8883);
+    loadScreen(0);
+    showPrinterNotice();
+    lv_refr_now(NULL);
+    ConsoleInfo.printf("[XTouch][PRINTER] selected slot=%u\n", slot + 1);
 }
 
 void xtouch_mqtt_setup()
 {
-    lv_label_set_text(introScreenCaption, LV_SYMBOL_CHARGE " Connecting Printer");
+    lv_label_set_text(introScreenCaption, XTOUCH_TEXT_CONNECTING_PRINTER);
     lv_timer_handler();
     lv_task_handler();
     delay(32);
@@ -835,12 +796,14 @@ void xtouch_mqtt_setup()
     xtouch_wiFiClientSecure.stop();
 
     xtouch_wiFiClientSecure.setInsecure();
+    xtouch_wiFiClientSecure.setHandshakeTimeout(3);
 
     xtouch_pubSubClient.setServer(xTouchConfig.xTouchHost, 8883);
     xtouch_pubSubClient.setBufferSize(2048); // 2KB for mqtt message JWT output
     xtouch_pubSubClient.setStream(stream);
     xtouch_pubSubClient.setCallback(xtouch_pubSubClient_streamCallback);
     xtouch_pubSubClient.setKeepAlive(10);
+    xtouch_pubSubClient.setSocketTimeout(2);
 
     /* home */
     lv_msg_subscribe(XTOUCH_COMMAND_LIGHT_TOGGLE, (lv_msg_subscribe_cb_t)xtouch_device_onLightToggleCommand, NULL);
@@ -869,19 +832,27 @@ void xtouch_mqtt_setup()
     lv_msg_subscribe(XTOUCH_COMMAND_EXTRUDE_UP, (lv_msg_subscribe_cb_t)xtouch_device_onNozzleUp, NULL);
     lv_msg_subscribe(XTOUCH_COMMAND_EXTRUDE_DOWN, (lv_msg_subscribe_cb_t)xtouch_device_onNozzleDown, NULL);
 
-    delay(2000);
+    loadScreen(0);
+    xtouch_screen_startScreenTimer();
+    xtouch_mqtt_nextAttempt = millis() + 150;
 }
 
 void xtouch_mqtt_loop()
 {
-    xtouch_pubSubClient.loop();
-    if (!xtouch_pubSubClient.connected())
-    {
-        Serial.println("π-----DISCONNECTED-----");
+    xtouch_mqtt_switch_printer();
+    if (xtouch_pubSubClient.connected()) {
+        xtouch_pubSubClient.loop();
+        if ((uint32_t)(millis() - xtouch_mqtt_lastPushStatus) >
+            XTOUCH_MQTT_SERVER_PUSH_STATUS_TIMEOUT * 1000U) {
+            xtouch_pubSubClient.disconnect();
+            xtouch_mqtt_hasStatus = false;
+            xtouch_mqtt_nextAttempt = millis() + 5000;
+            xtouch_mqtt_sendMsg(XTOUCH_ON_PRINT_STATUS);
+        }
+    } else {
         xtouch_mqtt_connect();
-        return;
     }
-    delay(10);
+    delay(1);
 }
 
 #endif
