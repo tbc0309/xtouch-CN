@@ -2,7 +2,7 @@
 
 简体中文 | [English](README.en.md)
 
-[xTouch](https://github.com/xperiments-in/xtouch) 的多语言版本，面向 **2.8 英寸、240×320、ESP32** 机型，用于拓竹打印机状态显示与控制。基于上游 `0.9.213`，普通界面和大号数字均使用腾讯 W7 字体。
+[xTouch](https://github.com/xperiments-in/xtouch) 的多语言版本，面向 **2.8 英寸、240×320、ESP32** 机型，用于拓竹打印机状态显示与控制。基于上游 `0.9.213`，普通界面和大号数字均使用腾讯 W7 字体。 **[配置生成与在线刷写](https://tbc0309.github.io/xtouch-CN/)**
 
 ## 功能
 
@@ -49,6 +49,8 @@
 
 ## 下载与刷写
 
+推荐使用 **[配置生成与在线刷写](https://tbc0309.github.io/xtouch-CN/)** 生成配置、选择机型并通过 USB 刷写。根据浏览器语言显示中文或英文，可手动切换；详细说明见 [网页工具](docs/WEB.md)。
+
 $\color{red}{\text{支持原版 xTouch 固件通过 SD 卡升级为本项目 xtouch-CN 固件。}}$
 
 从 [Releases](https://github.com/tbc0309/xtouch-CN/releases) 下载，按当前情况选择：
@@ -56,7 +58,7 @@ $\color{red}{\text{支持原版 xTouch 固件通过 SD 卡升级为本项目 xto
 | 当前情况 | 操作 |
 | --- | --- |
 | 已安装原版 xTouch | 将 `xtouch-2.8.bin` 改名为 `firmware.bin` 放到 SD 卡根目录，插卡开机升级。保留配置与校准，先移除旧的 `xtouch/ota.json`。 |
-| 首次 USB 安装 | 将 `xtouch-2.8-full.bin` 写入 `0x0`，再按下面步骤初始化。 |
+| 全新安装 | 打开 **[配置生成与在线刷写](https://tbc0309.github.io/xtouch-CN/)**，选择串口并按提示安装，再完成下方初始化。 |
 | 已安装 xtouch-CN | 开启 OTA 后重启，或连续点击设置页版本号三次检查更新；也可使用 SD 卡升级。 |
 
 SD 卡升级使用应用固件，不要使用 `xtouch-2.8-full.bin`。安装时保持供电。详细步骤见 [更新与维护](docs/UPDATING.md)。
@@ -113,8 +115,9 @@ SD 卡升级使用应用固件，不要使用 `xtouch-2.8-full.bin`。安装时�
 
 | 文档 | 内容 |
 | --- | --- |
+| [网页工具](docs/WEB.md) | 配置生成、导入与在线刷写 |
 | [硬件说明](docs/HARDWARE.md) | CYD 参数与 GPIO 引脚 |
-| [更新与维护](docs/UPDATING.md) | 原版卡刷、USB 安装、OTA 与恢复 |
+| [更新与维护](docs/UPDATING.md) | 原版卡刷、在线刷写、OTA 与恢复 |
 | [存储与备份](docs/STORAGE.md) | 内部配置、SD 同步与备份规则 |
 | [MQTT 支持范围](docs/MQTT-CAPABILITIES.md) | 耗材操作与控制兼容范围 |
 | [机型显示](docs/PRINTER-MODELS.md) | 机型识别、AMS 显示与图片资源 |

@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | English
 
-A multilingual version of [xTouch](https://github.com/xperiments-in/xtouch) for **2.8-inch, 240×320, ESP32** hardware, providing status monitoring and controls for Bambu Lab printers. Based on upstream `0.9.213`, it uses Tencent W7 for interface text and large numbers.
+A multilingual version of [xTouch](https://github.com/xperiments-in/xtouch) for **2.8-inch, 240×320, ESP32** hardware, providing status monitoring and controls for Bambu Lab printers. Based on upstream `0.9.213`, it uses Tencent W7 for interface text and large numbers. **[Configuration & web installer](https://tbc0309.github.io/xtouch-CN/)**
 
 ## Features
 
@@ -49,6 +49,8 @@ Screenshots from the 2.8-inch device at its native landscape resolution of 320×
 
 ## Download and installation
 
+Use the **[Configuration & web installer](https://tbc0309.github.io/xtouch-CN/)** to generate configuration, select models and install over USB. The initial language follows the browser: Chinese variants use Chinese; other languages use English. You can switch in the header. See [Web tools](docs/WEB.en.md).
+
 $\color{red}{\text{Original xTouch firmware supports upgrading to xtouch-CN via SD card.}}$
 
 Download from [Releases](https://github.com/tbc0309/xtouch-CN/releases), then choose your installation path:
@@ -56,7 +58,7 @@ Download from [Releases](https://github.com/tbc0309/xtouch-CN/releases), then ch
 | Situation | Steps |
 | --- | --- |
 | Original xTouch installed | Rename `xtouch-2.8.bin` to `firmware.bin`, put it in the SD root and boot. Keep your configuration and calibration; remove old `xtouch/ota.json` first. |
-| First USB installation | Flash `xtouch-2.8-full.bin` at `0x0`, then complete the setup below. |
+| Fresh installation | Open the **[Configuration & web installer](https://tbc0309.github.io/xtouch-CN/)**, select the serial port, install and complete setup below. |
 | xtouch-CN already installed | Enable OTA and restart, or tap the Settings version three times. SD updates are also supported. |
 
 Use the application image for SD updates, not `xtouch-2.8-full.bin`. Keep power connected during installation. See [Updates and recovery](docs/UPDATING.en.md) for detailed steps.
@@ -111,8 +113,9 @@ These are the firmware’s built-in model mappings, not a list of fully hardware
 
 | Guide | Contents |
 | --- | --- |
+| [Web tools](docs/WEB.en.md) | Configuration generation, import and web installation |
 | [Hardware](docs/HARDWARE.en.md) | CYD specifications and GPIO pins |
-| [Updates and recovery](docs/UPDATING.en.md) | Original firmware SD upgrade, USB installation and OTA |
+| [Updates and recovery](docs/UPDATING.en.md) | Original firmware SD upgrade, online installation and OTA |
 | [Storage](docs/STORAGE.en.md) | Internal configuration, SD synchronization and backups |
 | [MQTT capabilities](docs/MQTT-CAPABILITIES.en.md) | Filament controls and compatibility limits |
 | [Printer artwork](docs/PRINTER-MODELS.en.md) | Model recognition, AMS display and image resources |

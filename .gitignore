@@ -2,6 +2,12 @@
 .vscode
 .DS_Store
 node_modules
+web/vendor/
+web/firmware/
+web/firmware.json
+web/manifest.json
+_site/
+release-images/
 LOCAL-REVIEW.zh-CN.md
 *.ttf
 *.otf
