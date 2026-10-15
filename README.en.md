@@ -6,95 +6,126 @@ A multilingual version of [xTouch](https://github.com/xperiments-in/xtouch) for 
 
 ## Features
 
-- Simplified Chinese, Traditional Chinese, and English, selectable in Settings and remembered across restarts.
-- Up to four printer profiles, selected using the white, red, green, and blue indicators at the top.
-- A separate AMS icon and a two-second printer name notice when switching printers.
-- Internal configuration and touch calibration storage. After initialization, the device can run without an SD card and synchronize backups when a card is inserted.
-- Project OTA updates: SD staging when a card is available, or direct installation to the inactive application partition without one.
-- Silent, Standard, Sport, and Ludicrous speed modes.
-- A global LVGL font covering dynamic controls, with dedicated icon fonts.
-- Separate translation files and generated 14px and 28px grayscale font subsets.
+- Six languages: Simplified Chinese, Traditional Chinese, English, French, Russian and Japanese, with W7 interface text and large numbers.
+- Printing status, temperature, fans, speed, light and motion controls.
+- Up to 100 printer profiles, custom names and an on-screen device picker; one active connection at a time.
+- Actual AMS filament colors, remaining-percentage alerts, source selection and confirmed load/unload/RFID operations.
+- Internal settings and touch calibration, with SD synchronization and operation without SD after setup.
+- SD and project OTA updates; tap the Settings version three times for a manual check.
 
-HMS fault descriptions use the upstream English database. The font subset covers built-in interface text; external Chinese text, such as print job names, may contain unsupported characters.
+Control availability depends on the printer and firmware. See [MQTT capabilities](docs/MQTT-CAPABILITIES.en.md). The font subset covers interface text; external job names may contain unsupported characters. HMS descriptions use the upstream English database.
 
-## Download and installation
+## Supported CYD board
 
-Download from [Releases](https://github.com/tbc0309/xtouch-CN/releases):
+![Board product appearance reference](docs/images/cyd-board-product.jpg)
 
-| File | Purpose |
-| --- | --- |
-| `xtouch-2.8-full.bin` | Full image for initial USB installation, flashed at `0x0` |
-| `xtouch-2.8.bin` | Application image for OTA or SD updates; rename to `firmware.bin` for SD installation. Direct USB application updates require identifying the active partition. |
+Supported board: **ESP32-2432S028R (2.8-inch CYD, resistive touch)**.
 
-Initial setup requires an SD card containing the printer connection configuration. Once imported into internal storage, the device can operate without the card; settings and touch calibration remain on the device. See [Internal storage and SD synchronization](docs/STORAGE.en.md). Follow the [upstream instructions](README.upstream.md) for Wi-Fi setup, printer credentials, and touch calibration. Hardware support is limited to the upstream 2.8-inch design; different display drivers or pin assignments require adaptation.
+- ESP32 with 4MB Flash
+- 240×320 display with an ILI9341 controller
+- XPT2046 resistive touch and a microSD slot
 
-```sh
-python -m esptool --chip esp32 --port COM5 --baud 115200 write_flash 0x0 xtouch-2.8-full.bin
-```
-
-Replace `COM5` with the device's serial port. Enable OTA in Settings to check for project updates at the next startup. See [Updates and recovery](docs/UPDATING.en.md).
+Other display or touch variants require adaptation. [Specifications and pins](docs/HARDWARE.en.md).
 
 ## Device interface
 
-Screenshots from the 2.8-inch device at its native landscape resolution of 320×240, shown in Simplified Chinese. The interface language can be changed in Settings.
+Screenshots from the 2.8-inch device at its native landscape resolution of 320×240, shown in English. The interface language can be changed in Settings.
 
 | Home | Temperature and fans |
 | --- | --- |
-| ![Home](docs/images/home.png) | ![Temperature and fans](docs/images/temperature.png) |
+| ![Home](docs/images/en/home.png) | ![Temperature and fans](docs/images/en/temperature.png) |
 
 | Motion controls | Filament |
 | --- | --- |
-| ![Motion controls](docs/images/control.png) | ![Filament](docs/images/filament.png) |
+| ![Motion controls](docs/images/en/control.png) | ![Filament](docs/images/en/filament.png) |
 
 | Settings and language | Project link |
 | --- | --- |
-| ![Settings and language](docs/images/settings.png) | ![Project link](docs/images/settings-project.png) |
+| ![Settings and language](docs/images/en/settings.png) | ![Project link](docs/images/en/settings-project.png) |
+
+| Device settings | Device picker |
+| --- | --- |
+| ![Device settings](docs/images/en/settings-device.png) | ![Device picker](docs/images/en/printer-picker.png) |
+
+## Download and installation
+
+$\color{red}{\text{Original xTouch firmware supports upgrading to xtouch-CN via SD card.}}$
+
+Download from [Releases](https://github.com/tbc0309/xtouch-CN/releases), then choose your installation path:
+
+| Situation | Steps |
+| --- | --- |
+| Original xTouch installed | Rename `xtouch-2.8.bin` to `firmware.bin`, put it in the SD root and boot. Keep your configuration and calibration; remove old `xtouch/ota.json` first. |
+| First USB installation | Flash `xtouch-2.8-full.bin` at `0x0`, then complete the setup below. |
+| xtouch-CN already installed | Enable OTA and restart, or tap the Settings version three times. SD updates are also supported. |
+
+Use the application image for SD updates, not `xtouch-2.8-full.bin`. Keep power connected during installation. See [Updates and recovery](docs/UPDATING.en.md) for detailed steps.
+
+### First-time setup
+
+1. Prepare a microSD card. Edit the [configuration example](examples/xtouch.multiple.json), keep only the printers you need, and save it as `/xtouch.json` in the SD root.
+2. Set `ssid` and `pwd` to your Wi-Fi credentials. For each printer, enter `host`, `accessCode`, `serialNumber` and the model code listed below.
+3. Insert the card, boot, complete touch calibration if prompted, and wait for Wi-Fi and printer connection. For printer-side setup, see the [upstream guide](README.upstream.md).
+4. After import, configuration is stored internally and the card can be removed. Settings are saved internally and mirrored to SD when available. See [Storage and backup](docs/STORAGE.en.md).
+
+Original single-printer configurations are imported automatically with `.bak` backups. Configuration files contain credentials; keep them private.
 
 ## Multiple printers
 
-Fill in the [example configuration](examples/xtouch.multiple.json), save it as `/xtouch.json` in the SD card root, and restart. All printers share the Wi-Fi settings. The `printers` array supports four slots, corresponding to the white, red, green, and blue indicators.
+Fill in the [example configuration](examples/xtouch.multiple.json), save it as `/xtouch.json` in the SD root, and restart. Wi-Fi settings are shared; `printers` supports up to 100 entries.
 
-- `name`: optional custom name. Empty names default to `Printer 1`, etc. The name appears for two seconds during a switch.
-- `host`, `accessCode`, `serialNumber`, and `printerModel`: connection parameters for each printer. The access code must contain eight characters. Replace the example addresses and serial numbers with actual values.
-- `activePrinter`: default startup slot, from `0` to `3`. If unavailable, the first valid slot is selected.
-- Missing, `null`, or incomplete entries are gray and disabled. Use `null` to leave an empty slot. Entries after the fourth are ignored.
-- Configured slots use their assigned colors; the active slot has a gold border. Selecting another slot displays a switching notice.
-- Only one printer is connected at a time. Switching disconnects the previous printer and clears its status, temperatures, job details, and faults. Offline printers use retry backoff, and other slots remain selectable.
-- Switching does not save the selection; the next startup uses `activePrinter`. Legacy single-printer `mqtt` configurations are backed up as `.bak` and converted to the first slot.
-- Custom Chinese names are limited by the font subset. Use Latin characters and numbers, or regenerate the font with the required characters.
+- `name`: optional custom name, defaulting to `Printer 1`, etc. Long home-screen names scroll; picker rows use `[model] name`.
+- `host`, `accessCode`, `serialNumber`, `printerModel`: per-printer connection settings. Access codes contain eight characters. Replace all example credentials.
+- `activePrinter`: startup slot `0`–`99`, falling back to the first valid entry.
+- `null` reserves an empty slot. Incomplete entries cannot be selected; configurations with more than 100 entries are rejected.
+- Tap cycles through up to four configured printers; with more than four, tap opens the scrolling picker. Hold always opens it.
+- One printer is connected at a time. Switching clears stale state and disconnects the previous connection. Offline targets retry with backoff.
+- On-screen selection is temporary; startup still uses `activePrinter`. Legacy `mqtt` configuration is backed up as `.bak` and converted to the first slot.
+- Custom names use the interface font subset; arbitrary external characters are not guaranteed.
 
-Each printer requires LAN connectivity and its own address, access code, and serial number.
+### Printer model codes
+
+Set `printerModel` to the protocol code below; for example, use `"printerModel": "C12"` for P1S. Codes are case-sensitive; do not use short names such as `P1S`.
+
+| Model | `printerModel` protocol code |
+| --- | --- |
+| X1 Carbon | `BL-P001` |
+| X1 | `BL-P002` |
+| P1P | `C11` |
+| P1S | `C12` |
+| X1E | `C13` |
+| A1 mini | `N1` |
+| A1 | `N2S` |
+| X2D | `N6` |
+| P2S | `N7` |
+| A2L | `N9` |
+| H2C | `O1C` |
+| H2C | `O1C2` |
+| H2D | `O1D` |
+| H2D Pro | `O1E` |
+| H2S | `O1S` |
+
+These are the firmware’s built-in model mappings, not a list of fully hardware-tested control implementations. `printerModel` is a configuration hint; home artwork appears only after a valid model is reported by the printer. Otherwise the xTouch logo remains visible. For an unknown model, use `"printerModel": ""`.
+
+## Documentation
+
+| Guide | Contents |
+| --- | --- |
+| [Hardware](docs/HARDWARE.en.md) | CYD specifications and GPIO pins |
+| [Updates and recovery](docs/UPDATING.en.md) | Original firmware SD upgrade, USB installation and OTA |
+| [Storage](docs/STORAGE.en.md) | Internal configuration, SD synchronization and backups |
+| [MQTT capabilities](docs/MQTT-CAPABILITIES.en.md) | Filament controls and compatibility limits |
+| [Printer artwork](docs/PRINTER-MODELS.en.md) | Model recognition, AMS display and image resources |
+| [Development](docs/DEVELOPMENT.en.md) | Build, code structure, languages and fonts |
 
 ## Build from source
-
-Install Python and PlatformIO, then run in the repository directory:
 
 ```sh
 python -m pip install platformio
 python -m platformio run
 ```
 
-The build environment is `esp32dev`. Generated fonts are included; a normal build needs neither the original TTF nor Node.js. The application is generated at `.pio/build/esp32dev/firmware.bin`. Packaged files are placed in the adjacent `xtouch-bin/ota/` and `xtouch-bin/webusb/` directories. Building does not change `version.json`. See the [Development guide](docs/DEVELOPMENT.en.md).
-
-## Languages and fonts
-
-Select 简体中文, 繁體中文, or English at the top of Settings. Changes take effect immediately, are saved internally in `/xtouch/settings.json`, and are mirrored to SD when available. Translation files are `src/ui/i18n/zh_cn.h`, `zh_tw.h`, and `en.h`.
-
-- Translation selection and strings: `src/ui/i18n/`. Add new text to all three languages.
-- Global fonts: `LV_FONT_DEFAULT` and `XTOUCH_FONT_NUMERIC` in `resources/lv_conf.h`.
-- Font generation: `scripts/localize_zh.py`; it generates fonts without rewriting application code.
-- Coverage check: `python scripts/check_localization.py`.
-
-To regenerate the subsets, install Node.js and supply a Tencent W7 TTF that you are authorized to use:
-
-```powershell
-$env:XTOUCH_W7_FONT='C:\fonts\Tencent-W7.ttf'
-python scripts/localize_zh.py
-python scripts/check_localization.py
-python -m platformio run
-```
-
-The original TTF is not distributed. Font rights belong to their respective owners; confirm the applicable permissions before use or redistribution. The vendor fault database is included. To refresh it, install Node.js and build with `XTOUCH_REFRESH_ERRORS=1`.
+Generated fonts are included; a normal build needs neither Node.js nor the original TTF. See [Development](docs/DEVELOPMENT.en.md) for hardware configuration, font generation and release packaging.
 
 ## Source and licensing
 

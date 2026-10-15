@@ -1,3 +1,4 @@
+#include "xtouch/ota_request.h"
 #include <stdio.h>
 #include "../ui.h"
 #include "../ui_msgs.h"
@@ -146,19 +147,6 @@ lv_obj_t *ui_settingsComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_bg_opa(cui_settingsComponent, 255, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
 
     lv_obj_t *cui_settingsTitle;
-    lv_obj_t *languageRow = lv_obj_create(cui_settingsComponent);
-    lv_obj_remove_style_all(languageRow);
-    lv_obj_set_size(languageRow, lv_pct(100), 38);
-    lv_obj_set_flex_flow(languageRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(languageRow, LV_FLEX_ALIGN_SPACE_BETWEEN,
-                         LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_t *languageLabel = lv_label_create(languageRow);
-    lv_label_set_text(languageLabel, XTOUCH_TEXT_LANGUAGE);
-    lv_obj_t *languageSelect = lv_dropdown_create(languageRow);
-    lv_obj_set_width(languageSelect, 132);
-    lv_dropdown_set_options(languageSelect, "简体中文\n繁體中文\nEnglish");
-    lv_dropdown_set_selected(languageSelect, xtouch_language_get());
-    lv_obj_add_event_cb(languageSelect, onLanguageChanged, LV_EVENT_VALUE_CHANGED, NULL);
     cui_settingsTitle = lv_label_create(cui_settingsComponent);
     lv_obj_set_width(cui_settingsTitle, lv_pct(100));
     lv_obj_set_height(cui_settingsTitle, LV_SIZE_CONTENT); /// 40
@@ -175,6 +163,32 @@ lv_obj_t *ui_settingsComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_radius(cui_settingsTitle, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(cui_settingsTitle, lv_color_hex(0x000), LV_PART_MAIN | LV_STATE_DEFAULT);
 
+    lv_obj_t *languageRow = lv_obj_create(cui_settingsComponent);
+    lv_obj_remove_style_all(languageRow);
+    lv_obj_set_size(languageRow, lv_pct(100), 48);
+    lv_obj_set_style_bg_color(languageRow,lv_color_hex(0x222222),0);
+    lv_obj_set_style_bg_opa(languageRow,LV_OPA_COVER,0);
+    lv_obj_set_style_radius(languageRow,6,0);
+    lv_obj_set_style_pad_left(languageRow,16,0);
+    lv_obj_set_style_pad_right(languageRow,16,0);
+    lv_obj_set_flex_flow(languageRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(languageRow, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                         LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *languageLabel = lv_label_create(languageRow);
+    lv_label_set_text(languageLabel, XTOUCH_TEXT_LANGUAGE);
+    lv_obj_t *languageSelect = lv_dropdown_create(languageRow);
+    lv_obj_set_size(languageSelect,132,34);
+    lv_obj_set_style_bg_color(languageSelect,lv_color_hex(0x333333),0);
+    lv_obj_set_style_text_color(languageSelect,lv_color_white(),0);
+    lv_obj_set_style_border_width(languageSelect,0,0);
+    lv_obj_set_style_pad_ver(languageSelect,6,0);
+    lv_obj_t *languageList=lv_dropdown_get_list(languageSelect);
+    lv_obj_set_style_bg_color(languageList,lv_color_hex(0x333333),0);
+    lv_obj_set_style_text_color(languageList,lv_color_white(),0);
+    lv_obj_set_style_bg_color(languageList,lv_color_hex(0x555555),LV_PART_SELECTED|LV_STATE_CHECKED);
+    lv_dropdown_set_options(languageSelect, "简体中文\n繁體中文\nEnglish\nFrançais\nРусский\n日本語");
+    lv_dropdown_set_selected(languageSelect, xtouch_language_get());
+    lv_obj_add_event_cb(languageSelect, onLanguageChanged, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_t *cui_screenTitle;
     cui_screenTitle = lv_label_create(cui_settingsComponent);
     lv_obj_set_width(cui_screenTitle, lv_pct(100));
@@ -414,7 +428,9 @@ lv_obj_t *ui_settingsComponent_create(lv_obj_t *comp_parent)
     cui_deviceTitle = lv_label_create(cui_settingsComponent);
     lv_obj_set_width(cui_deviceTitle, lv_pct(100));
     lv_obj_set_height(cui_deviceTitle, LV_SIZE_CONTENT); /// 40
-    lv_label_set_text_fmt(cui_deviceTitle, "XTOUCH v%s", XTOUCH_FIRMWARE_VERSION);
+    lv_label_set_text_fmt(cui_deviceTitle, "XTOUCH-CN v%s", XTOUCH_FIRMWARE_VERSION);
+    lv_obj_add_flag(cui_deviceTitle,LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(cui_deviceTitle,xtouch_ota_version_tap,LV_EVENT_ALL,NULL);
     lv_obj_set_scrollbar_mode(cui_deviceTitle, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_text_font(cui_deviceTitle, LV_FONT_DEFAULT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_left(cui_deviceTitle, 16, LV_PART_MAIN | LV_STATE_DEFAULT);

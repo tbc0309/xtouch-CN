@@ -6,33 +6,26 @@
 
 ## 功能
 
-- 简体中文、繁體中文、English，设置页切换，立即生效并记忆。
-- 最多四台打印机配置，顶部白、红、绿、蓝色块点击切换。
-- 独立 AMS 图标；切换时在状态区域显示设备名称 2 秒。
-- 配置与触摸校准保存在内部，初始化后可脱离 SD 卡，插卡自动同步备份。
-- 项目 OTA 更新，有卡暂存、无卡直接更新备用程序分区，保留内部配置。
-- 速度选择：静音、标准、运动、狂暴。
-- LVGL 全局默认中文字体，覆盖下拉列表等动态控件；保留原有图标字体。
-- 中文文案独立存放，按实际使用字符生成 14px 和 28px 灰阶字库。
+- 六种语言：简体中文、繁体中文、英语、法语、俄语、日语，界面与大号数字使用 W7 字体。
+- 打印状态、温度、风扇、速度、灯光和运动控制。
+- 最多 100 台打印机配置，自定义名称与屏幕设备选择，一次连接一台。
+- AMS 实际耗材色、剩余量提醒、耗材选择与进退料、RFID 重读确认。
+- 配置和触摸校准保存在内部，SD 卡同步备份，初始化后可脱卡运行。
+- SD 卡升级与本项目 OTA，连续点击设置页版本号三次可手动检查更新。
 
-HMS 故障说明使用上游英文数据库。精简字库覆盖内置界面文案，打印任务名等外部中文可能存在缺字。
+控制功能取决于打印机及固件，详见 [MQTT 支持范围](docs/MQTT-CAPABILITIES.md)。精简字库覆盖界面文案，外部打印文件名可能缺字；HMS 故障说明沿用上游英文数据库。
 
-## 下载与刷写
+## 支持的 CYD 主板
 
-从 [Releases](https://github.com/tbc0309/xtouch-CN/releases) 下载：
+![主板商品外观参考](docs/images/cyd-board-product.jpg)
 
-| 文件 | 用途 |
-| --- | --- |
-| `xtouch-2.8-full.bin` | USB 首次安装的完整镜像，写入地址 `0x0` |
-| `xtouch-2.8.bin` | 应用固件，用于 OTA；SD 更新时命名为 `firmware.bin`，单独 USB 写入须确认当前启动分区 |
+适用主板：**ESP32-2432S028R（2.8 寸 CYD，电阻触摸版）**。
 
-首次初始化需要 SD 卡和打印机连接配置；导入内部存储后可脱离 SD 卡运行，触摸校准、语言等设置保存在机器内。详见 [内部配置与 SD 同步](docs/STORAGE.md)。配网、打印机配置及触摸校准按 [上游使用说明](README.upstream.md) 操作。仅面向上游所支持的 2.8 英寸硬件；其他屏幕驱动或引脚不同的板子需要单独适配。
+- ESP32，4MB Flash
+- 240×320 屏幕，ILI9341 显示驱动
+- XPT2046 电阻触摸，microSD 卡槽
 
-```sh
-python -m esptool --chip esp32 --port COM5 --baud 115200 write_flash 0x0 xtouch-2.8-full.bin
-```
-
-将 `COM5` 替换为自己的串口。设置页开启 OTA 后，下次开机检查本项目发布的新版本。详见 [更新与维护](docs/UPDATING.md)。
+其他屏幕或触摸版本不能直接通刷。[详细参数与引脚](docs/HARDWARE.md)。
 
 ## 实机界面
 
@@ -50,51 +43,91 @@ python -m esptool --chip esp32 --port COM5 --baud 115200 write_flash 0x0 xtouch-
 | --- | --- |
 | ![设置与语言](docs/images/settings.png) | ![项目链接](docs/images/settings-project.png) |
 
+| 设备设置 | 设备选择 |
+| --- | --- |
+| ![设备设置](docs/images/settings-device.png) | ![设备选择](docs/images/printer-picker.png) |
+
+## 下载与刷写
+
+$\color{red}{\text{支持原版 xTouch 固件通过 SD 卡升级为本项目 xtouch-CN 固件。}}$
+
+从 [Releases](https://github.com/tbc0309/xtouch-CN/releases) 下载，按当前情况选择：
+
+| 当前情况 | 操作 |
+| --- | --- |
+| 已安装原版 xTouch | 将 `xtouch-2.8.bin` 改名为 `firmware.bin` 放到 SD 卡根目录，插卡开机升级。保留配置与校准，先移除旧的 `xtouch/ota.json`。 |
+| 首次 USB 安装 | 将 `xtouch-2.8-full.bin` 写入 `0x0`，再按下面步骤初始化。 |
+| 已安装 xtouch-CN | 开启 OTA 后重启，或连续点击设置页版本号三次检查更新；也可使用 SD 卡升级。 |
+
+SD 卡升级使用应用固件，不要使用 `xtouch-2.8-full.bin`。安装时保持供电。详细步骤见 [更新与维护](docs/UPDATING.md)。
+
+### 首次配置
+
+1. 准备 microSD 卡，填写 [配置示例](examples/xtouch.multiple.json)，只保留需要的打印机，保存到卡根目录 `/xtouch.json`。
+2. `ssid`、`pwd` 填 Wi-Fi 名称与密码；各打印机填写 `host` 地址、`accessCode` 访问码、`serialNumber` 序列号和下方机型代码。
+3. 插卡开机，按提示完成触摸校准，等待连接 Wi-Fi 和打印机。打印机端设置可参考 [上游说明](README.upstream.md)。
+4. 导入完成后配置保存在内部，可拔卡运行。日常设置先保存到内部，有卡时同步备份，详见 [存储与备份](docs/STORAGE.md)。
+
+原版单设备配置会自动导入并保留 `.bak` 备份。配置含密码和访问码，请勿公开分享。
+
 ## 多设备配置
 
-将 [多设备示例](examples/xtouch.multiple.json) 填好后，保存到 SD 卡根目录 `/xtouch.json`，重启加载。Wi-Fi 配置所有设备共用，`printers` 最多四个条目，固定对应顶部白、红、绿、蓝四个色块。
+将 [多设备示例](examples/xtouch.multiple.json) 填好后，保存到 SD 卡根目录 `/xtouch.json`，重启加载。Wi-Fi 配置所有设备共用，`printers` 最多 100 个条目。
 
-- `name`：自定义名称，未填显示 `Printer 1` 等默认名称；切换设备时在状态位置显示名称 2 秒，平时不常驻显示。
-- `host`、`accessCode`、`serialNumber`、`printerModel`：各打印机的连接参数。访问码必须为 8 个字符；示例地址与序列号必须换为自己的值。
-- `activePrinter`：开机默认槽位，`0`～`3`。无效时选择第一个有效条目。
-- 未添加、`null` 或参数不完整的条目显示灰色、不能点击。用 `null` 可以保留空槽位；第五台及以后忽略。
-- 有效条目显示固定槽位颜色，当前设备增加金色边框；点击其他色块切换，状态区域显示“正在切换到 xxx”。
-- 一次只连接一台打印机，切换前断开旧连接并清空状态、温度、任务和故障提示。离线设备自动退避重试，可继续选择其他设备。
-- 点击切换不写 SD、不保存选择；下次启动仍使用 `activePrinter`。原单设备 `mqtt` 配置会备份为 `.bak`，自动转换到第一个槽位。
-- 自定义中文名称受精简字库限制，推荐英文/数字；如需特定中文字，须生成包含对应字符的字库。
+- `name`：自定义名称，未填显示 `Printer 1` 等默认名称。首页显示名称，过长时滚动；设备列表显示 `[机型] 名称`。
+- `host`、`accessCode`、`serialNumber`、`printerModel`：各打印机的连接参数。访问码必须为 8 个字符，示例参数需替换为自己的值。
+- `activePrinter`：开机默认槽位，`0`～`99`。无效时选择第一个有效条目。
+- `null` 可保留空槽位；不完整条目不可选择。超过 100 个条目的配置不导入。
+- 4 台以内短按设备卡顺序切换；超过 4 台短按打开可上下滑动的设备列表。长按始终打开列表。
+- 一次只连接一台；切换前断开旧连接并清空状态，离线设备退避重试，可继续选择其他设备。
+- 屏幕切换不写 SD、不保存当前选择；下次启动仍使用 `activePrinter`。原单设备 `mqtt` 配置备份为 `.bak`，自动转换到第一个槽位。
+- 自定义名称受精简字库限制，推荐英文/数字；任意外部字符不保证覆盖。
 
 各打印机需开启局域网连接，并填写对应的地址、访问码和序列号。
 
-## 源码编译
+### 机型协议代码
 
-安装 Python、PlatformIO 后，在仓库目录运行：
+`printerModel` 填写下表中的协议代码，例如 P1S 填 `"printerModel": "C12"`。代码区分大小写，不要直接填写 `P1S` 等简称。
+
+| 机型 | `printerModel` 协议代码 |
+| --- | --- |
+| X1 Carbon | `BL-P001` |
+| X1 | `BL-P002` |
+| P1P | `C11` |
+| P1S | `C12` |
+| X1E | `C13` |
+| A1 mini | `N1` |
+| A1 | `N2S` |
+| X2D | `N6` |
+| P2S | `N7` |
+| A2L | `N9` |
+| H2C | `O1C` |
+| H2C | `O1C2` |
+| H2D | `O1D` |
+| H2D Pro | `O1E` |
+| H2S | `O1S` |
+
+以上为当前固件内置的机型映射，不代表所有机型的控制功能都已实机验证。`printerModel` 是配置提示；首页收到打印机报告的有效型号后才显示对应图片，否则保留 xTouch 标志。未知型号可留空 `"printerModel": ""`。
+
+## 文档
+
+| 文档 | 内容 |
+| --- | --- |
+| [硬件说明](docs/HARDWARE.md) | CYD 参数与 GPIO 引脚 |
+| [更新与维护](docs/UPDATING.md) | 原版卡刷、USB 安装、OTA 与恢复 |
+| [存储与备份](docs/STORAGE.md) | 内部配置、SD 同步与备份规则 |
+| [MQTT 支持范围](docs/MQTT-CAPABILITIES.md) | 耗材操作与控制兼容范围 |
+| [机型显示](docs/PRINTER-MODELS.md) | 机型识别、AMS 显示与图片资源 |
+| [开发说明](docs/DEVELOPMENT.md) | 编译、代码结构、语言与字体 |
+
+## 源码编译
 
 ```sh
 python -m pip install platformio
 python -m platformio run
 ```
 
-构建环境为 `esp32dev`，已包含生成后的字库，普通编译不需要原始 TTF，也不需要 Node.js。应用输出到 `.pio/build/esp32dev/firmware.bin`，打包产物分别位于相邻的 `xtouch-bin/ota/` 和 `xtouch-bin/webusb/`，构建不会自动改变 `version.json`。开发结构见 [开发说明](docs/DEVELOPMENT.md)。
-
-## 汉化与字体维护
-
-设置页顶部可选择简体中文、繁體中文或 English，立即切换并保存到内部 `/xtouch/settings.json`，有 SD 卡时同步备份，重启后保留。语言文案分别位于 `src/ui/i18n/zh_cn.h`、`zh_tw.h` 和 `en.h`，统一使用全局 W7 字体。
-
-- 三种语言文案与选择入口：`src/ui/i18n/`；新增文案须补齐三种语言。
-- 全局字体：`resources/lv_conf.h` 中的 `LV_FONT_DEFAULT` 和 `XTOUCH_FONT_NUMERIC`。
-- 字库生成：`scripts/localize_zh.py`，只生成字体，不改写应用源码。
-- 覆盖检查：`python scripts/check_localization.py`。
-
-更换文案或字体时安装 Node.js，提供自己有权使用的腾讯 W7 TTF，再生成子集：
-
-```powershell
-$env:XTOUCH_W7_FONT='C:\fonts\Tencent-W7.ttf'
-python scripts/localize_zh.py
-python scripts/check_localization.py
-python -m platformio run
-```
-
-原始 TTF 不随仓库分发。字体相关权利归原权利人所有，使用和再分发需自行确认对应授权。默认使用仓库内的厂商错误数据库；如需重新抓取，安装 Node.js 并设置 `XTOUCH_REFRESH_ERRORS=1` 后编译。
+仓库已包含生成字库，普通编译不需要 Node.js 或原始 TTF。硬件配置、字库生成与发布打包见 [开发说明](docs/DEVELOPMENT.md)。
 
 ## 来源与许可
 

@@ -1,30 +1,34 @@
 #include <Arduino.h>
 #include <stdio.h>
 #include "../ui.h"
+#include "../ams_display.h"
+#include "../printer_picker.h"
+#include "../printer_models.h"
+LV_FONT_DECLARE(ui_font_tencent_w7_24);
 #include "xtouch/globals.h"
 
-static void on_printer_slot(lv_event_t *e)
+static void set_device_model(lv_obj_t *label)
 {
-    xtouch_printer_request((uint8_t)(uintptr_t)lv_event_get_user_data(e));
+    const char *name=ui_printer_model_short_name(xtouch_printer_model_at(xtouch_printer_active()));
+    lv_point_t size;lv_txt_get_size(&size,name,LV_FONT_DEFAULT,0,0,LV_COORD_MAX,LV_TEXT_FLAG_EXPAND);
+    lv_obj_set_width(label,size.x>46?46:size.x);
+    lv_label_set_text(label,name);
 }
+static void device_model_updated(lv_event_t *e){set_device_model(lv_event_get_target(e));}
 
-/* Small AMS enclosure with four spools; drawn natively, independent of fonts. */
-static void draw_ams_icon(lv_event_t *e)
+static void on_next_printer(lv_event_t *e)
 {
-    lv_obj_t *obj = lv_event_get_target(e);
-    lv_draw_ctx_t *ctx = lv_event_get_draw_ctx(e);
-    lv_area_t bounds;
-    lv_obj_get_content_coords(obj, &bounds);
-    const uint32_t colors[4] = {0xD74545, 0x777777, 0xEEEEEE, 0xE5C941};
-    for (unsigned i = 0; i < 4; i++) {
-        lv_draw_rect_dsc_t dsc;
-        lv_draw_rect_dsc_init(&dsc);
-        dsc.bg_color = lv_color_hex(bambuStatus.ams ? colors[i] : 0x777777);
-        dsc.bg_opa = LV_OPA_COVER;
-        dsc.radius = 2;
-        lv_area_t spool = {bounds.x1 + 1 + 5 * i, bounds.y1 + 2,
-                           bounds.x1 + 3 + 5 * i, bounds.y2 - 1};
-        lv_draw_rect(ctx, &dsc, &spool);
+    if (lv_event_get_code(e) == LV_EVENT_LONG_PRESSED) {
+        ui_printer_picker_show();
+        return;
+    }
+    if (lv_event_get_code(e) != LV_EVENT_SHORT_CLICKED) return;
+    unsigned count=0;for(unsigned i=0;i<XTOUCH_MAX_PRINTERS;++i)count+=xtouch_printer_configured(i);
+    if(count>4){ui_printer_picker_show();return;}
+    uint8_t current = xtouch_printer_active();
+    for (uint8_t offset = 1; offset < XTOUCH_MAX_PRINTERS; ++offset) {
+        uint8_t slot = (current + offset) % XTOUCH_MAX_PRINTERS;
+        if (xtouch_printer_configured(slot)) { xtouch_printer_request(slot); return; }
     }
 }
 
@@ -195,17 +199,6 @@ void onXTouchBedTempTarget(lv_event_t *e)
 
     struct XTOUCH_MESSAGE_DATA *message = (struct XTOUCH_MESSAGE_DATA *)m->payload;
     lv_obj_set_style_text_color(target, message->data > 0 ? lv_color_hex(0xff682a) : lv_color_hex(0xCCCCCC), LV_PART_MAIN | LV_STATE_DEFAULT);
-}
-
-void onXTouchAMS(lv_event_t *e)
-{
-
-    lv_obj_t *target = lv_event_get_target(e);
-    lv_msg_t *m = lv_event_get_msg(e);
-
-    struct XTOUCH_MESSAGE_DATA *message = (struct XTOUCH_MESSAGE_DATA *)m->payload;
-    lv_obj_set_style_border_color(target, lv_color_hex(message->data ? 0x74D34A : 0x777777), 0);
-    lv_obj_invalidate(target);
 }
 
 void onXTouchWifiSignal(lv_event_t *e)
@@ -420,20 +413,6 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_pad_top(cui_mainScreenCameraIcon, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_bottom(cui_mainScreenCameraIcon, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    lv_obj_t *amsIcon = lv_obj_create(cui_mainScreenStatusBar);
-    lv_obj_remove_style_all(amsIcon);
-    lv_obj_set_size(amsIcon, 25, 18);
-    lv_obj_set_style_bg_color(amsIcon, lv_color_hex(0x161616), 0);
-    lv_obj_set_style_bg_opa(amsIcon, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(amsIcon, 3, 0);
-    lv_obj_set_style_border_width(amsIcon, 1, 0);
-    lv_obj_set_style_border_color(amsIcon, lv_color_hex(bambuStatus.ams ? 0x74D34A : 0x777777), 0);
-    lv_obj_set_style_pad_all(amsIcon, 1, 0);
-    lv_obj_clear_flag(amsIcon, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(amsIcon, draw_ams_icon, LV_EVENT_DRAW_MAIN_END, NULL);
-    lv_obj_add_event_cb(amsIcon, onXTouchAMS, LV_EVENT_MSG_RECEIVED, NULL);
-    lv_msg_subsribe_obj(XTOUCH_ON_AMS, amsIcon, NULL);
-
     lv_obj_t *cui_mainScreenAMS;
     cui_mainScreenAMS = lv_obj_create(cui_mainScreenStatusBar);
     lv_obj_set_height(cui_mainScreenAMS, lv_pct(70));
@@ -456,10 +435,10 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_pad_column(cui_mainScreenAMS, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(cui_mainScreenAMS, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(cui_mainScreenAMS, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    /* Fixed device slots, independent of the connected printer's AMS. */
+    /* Four real AMS slots; device selection has its own card. */
     lv_obj_set_width(cui_mainScreenAMS, 0);
     lv_obj_set_flex_grow(cui_mainScreenWifiIcon, 0);
-    lv_obj_set_flex_grow(cui_mainScreenCameraIcon, 0);
+    lv_obj_set_flex_grow(cui_mainScreenCameraIcon, 1);
 
     lv_obj_t *cui_mainScreenAMSColor0;
     cui_mainScreenAMSColor0 = lv_obj_create(cui_mainScreenAMS);
@@ -852,10 +831,49 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_text_color(cui_mainScreenRight, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(cui_mainScreenRight, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
 
+    // Square device selector with separate model and scrolling profile-name rows.
+    lv_obj_t *deviceButton = lv_obj_create(cui_mainScreenRight);
+    lv_obj_set_size(deviceButton, lv_pct(100), 49);
+    lv_obj_set_flex_flow(deviceButton, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(deviceButton, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(deviceButton, 0, 0);
+    lv_obj_set_style_pad_row(deviceButton, 0, 0);
+    lv_obj_set_style_border_width(deviceButton, 0, 0);
+    lv_obj_set_style_radius(deviceButton, 6, 0);
+    lv_obj_set_style_bg_color(deviceButton, lv_color_hex(0x555555), 0);
+    lv_obj_clear_flag(deviceButton, LV_OBJ_FLAG_SCROLLABLE);
+    // SHORT_CLICKED excludes release after a long press: opening the picker
+    // must never also cycle to the next printer.
+    lv_obj_add_event_cb(deviceButton, on_next_printer, LV_EVENT_SHORT_CLICKED, NULL);
+    lv_obj_add_event_cb(deviceButton, on_next_printer, LV_EVENT_LONG_PRESSED, NULL);
+    lv_obj_t *modelRow=lv_obj_create(deviceButton);
+    lv_obj_remove_style_all(modelRow);
+    lv_obj_set_size(modelRow,64,22);
+    lv_obj_clear_flag(modelRow,LV_OBJ_FLAG_CLICKABLE|LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(modelRow,LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(modelRow,LV_FLEX_ALIGN_CENTER,LV_FLEX_ALIGN_CENTER,LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(modelRow,2,0);
+    lv_obj_t *deviceIcon = lv_label_create(modelRow);
+    lv_label_set_text(deviceIcon, LV_SYMBOL_REFRESH);
+    lv_obj_set_style_text_color(deviceIcon, lv_color_hex(0x59D5E8), 0);
+    lv_obj_t *modelName=lv_label_create(modelRow);
+    lv_obj_set_width(modelName,46);
+    lv_label_set_long_mode(modelName,LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_style_text_align(modelName,LV_TEXT_ALIGN_CENTER,0);
+    set_device_model(modelName);
+    lv_obj_add_event_cb(modelName,device_model_updated,LV_EVENT_MSG_RECEIVED,NULL);
+    lv_msg_subsribe_obj(XTOUCH_ON_MODEL,modelName,NULL);
+    lv_obj_t *deviceName = lv_label_create(deviceButton);
+    lv_obj_set_size(deviceName,64,20);
+    lv_obj_set_style_text_align(deviceName,LV_TEXT_ALIGN_CENTER,0);
+    lv_label_set_long_mode(deviceName, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_style_anim_speed(deviceName, 25, 0);
+    lv_label_set_text(deviceName, xtouch_printer_name());
+
     lv_obj_t *cui_mainScreenLightButton;
     cui_mainScreenLightButton = lv_obj_create(cui_mainScreenRight);
     lv_obj_set_width(cui_mainScreenLightButton, lv_pct(100));
-    lv_obj_set_flex_grow(cui_mainScreenLightButton, 1);
+    lv_obj_set_height(cui_mainScreenLightButton, 49);
     lv_obj_set_x(cui_mainScreenLightButton, 386);
     lv_obj_set_y(cui_mainScreenLightButton, 178);
     lv_obj_set_flex_flow(cui_mainScreenLightButton, LV_FLEX_FLOW_ROW);
@@ -888,11 +906,11 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_label_set_text(cui_mainScreenLightButtonIcon, "w");
     lv_obj_clear_flag(cui_mainScreenLightButtonIcon, LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_CHAIN); /// Flags
     lv_obj_set_scrollbar_mode(cui_mainScreenLightButtonIcon, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_text_font(cui_mainScreenLightButtonIcon, &ui_font_xlcd, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(cui_mainScreenLightButtonIcon, &ui_font_xlcdmin, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *cui_mainScreenTemps;
     cui_mainScreenTemps = lv_obj_create(cui_mainScreenRight);
-    lv_obj_set_height(cui_mainScreenTemps, 180);
+    lv_obj_set_height(cui_mainScreenTemps, 130);
     lv_obj_set_width(cui_mainScreenTemps, lv_pct(100));
     lv_obj_set_x(cui_mainScreenTemps, 386);
     lv_obj_set_y(cui_mainScreenTemps, 178);
@@ -1041,24 +1059,52 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_label_set_text(cui_mainScreenChamberTempValue, "--");
     lv_obj_set_style_text_font(cui_mainScreenChamberTempValue, XTOUCH_FONT_NUMERIC, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    lv_obj_t *slots[4] = {cui_mainScreenAMSColor0, cui_mainScreenAMSColor1,
-                         cui_mainScreenAMSColor2, cui_mainScreenAMSColor3};
-    const uint32_t colors[4] = {0xFFFFFF, 0xFF0000, 0x00FF00, 0x0000FF};
-    for (uint8_t i = 0; i < XTOUCH_MAX_PRINTERS; i++) {
-        bool configured = xtouch_printer_configured(i);
-        lv_obj_set_width(slots[i], 0);
-        lv_obj_set_style_bg_color(slots[i], lv_color_hex(configured ? colors[i] : 0x777777), 0);
-        lv_obj_set_style_border_width(slots[i], configured && i == xtouch_printer_active() ? 2 : 0, 0);
-        lv_obj_set_style_border_color(slots[i], lv_color_hex(0xFFB300), 0);
-        if (configured) {
-            lv_obj_add_flag(slots[i], LV_OBJ_FLAG_CLICKABLE);
-            lv_obj_set_ext_click_area(slots[i], 3);
-            lv_obj_add_event_cb(slots[i], on_printer_slot, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+    // The device and lamp cards leave 130px for temperatures. Stacked icon/value
+    // pairs would clip, so use compact horizontal rows when chamber is visible.
+    if (!lv_obj_has_flag(cui_mainScreenChamberTemp, LV_OBJ_FLAG_HIDDEN)) {
+        lv_obj_set_style_pad_all(cui_mainScreenTemps, 0, 0);
+        lv_obj_t *rows[] = {cui_mainScreenNozzleTemp, cui_mainScreenBedTemp, cui_mainScreenChamberTemp};
+        lv_obj_t *icons[] = {cui_mainScreenNozzleTempIcon, cui_mainScreenBedTempIcon, cui_mainScreenChamberTempIcon};
+        for (unsigned i=0; i<3; ++i) {
+            lv_obj_set_flex_flow(rows[i], LV_FLEX_FLOW_ROW);
+            lv_obj_set_flex_align(rows[i], LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+            lv_obj_set_style_pad_column(rows[i], 0, 0);
+            lv_obj_set_width(icons[i], 24);
+            lv_obj_set_style_text_align(icons[i], LV_TEXT_ALIGN_LEFT, 0);
+            lv_obj_set_style_text_font(icons[i], &ui_font_xlcd, 0);
+            /* Equal icon columns keep all three readings aligned. */
+            lv_obj_t *value = lv_obj_get_child(rows[i], 1);
+            lv_obj_set_width(value, 46);
+            lv_label_set_long_mode(value, LV_LABEL_LONG_CLIP);
+            lv_obj_set_style_text_font(value, &ui_font_tencent_w7_24, 0);
+            lv_obj_set_style_text_align(value, LV_TEXT_ALIGN_CENTER, 0);
         }
     }
 
+    // Keep the compact, square AMS indicators independent of name length.
+    lv_obj_set_width(cui_mainScreenStatusBar, lv_pct(100));
+    lv_obj_set_style_pad_column(cui_mainScreenStatusBar, 2, 0);
+    lv_obj_set_flex_grow(cui_mainScreenCameraIcon, 1);
+    lv_obj_set_width(cui_mainScreenCameraIcon, LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(cui_mainScreenAMS, 0);
+    lv_obj_set_size(cui_mainScreenAMS, 84, 16);
+    lv_obj_set_style_pad_column(cui_mainScreenAMS, 2, 0);
+    lv_obj_set_flex_align(cui_mainScreenStatusBar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_left(cui_mainScreenStatusBar, 3, 0);
+    lv_obj_set_style_pad_right(cui_mainScreenStatusBar, 3, 0);
+    lv_obj_t *slots[4] = {cui_mainScreenAMSColor0, cui_mainScreenAMSColor1,
+                         cui_mainScreenAMSColor2, cui_mainScreenAMSColor3};
+    for (uint8_t i = 0; i < 4; ++i) {
+        lv_obj_set_flex_grow(slots[i], 0);
+        lv_obj_set_size(slots[i], 16, 16);
+        lv_obj_set_style_radius(slots[i], 3, 0);
+        lv_obj_clear_flag(slots[i], LV_OBJ_FLAG_CLICKABLE);
+    }
+    ui_ams_strip_bind(cui_mainScreenAMS);
+
     lv_obj_t **children = lv_mem_alloc(sizeof(lv_obj_t *) * _UI_COMP_HOMECOMPONENT_NUM);
     children[UI_COMP_HOMECOMPONENT_HOMECOMPONENT] = cui_homeComponent;
+    children[UI_COMP_HOMECOMPONENT_DEVICEBUTTON] = deviceButton;
     children[UI_COMP_HOMECOMPONENT_MAINSCREENLEFT] = cui_mainScreenLeft;
     children[UI_COMP_HOMECOMPONENT_MAINSCREENLEFT_MAINSCREENSTATUSBAR] = cui_mainScreenStatusBar;
     children[UI_COMP_HOMECOMPONENT_MAINSCREENLEFT_MAINSCREENSTATUSBAR_MAINSCREENWIFIICON] = cui_mainScreenWifiIcon;

@@ -12,17 +12,17 @@ ROOT = Path(__file__).resolve().parents[1]
 FONT_PATH = Path(os.environ.get('XTOUCH_W7_FONT', 'Tencent-W7.ttf'))
 
 
-def generate_font(name, size, characters, fallback):
-    if not FONT_PATH.is_file():
+def generate_font(name, size, characters, fallback, font_path=FONT_PATH):
+    if not font_path.is_file():
         raise SystemExit(f'Set XTOUCH_W7_FONT to your Tencent W7 TTF: {FONT_PATH}')
     npx = shutil.which('npx.cmd') or shutil.which('npx')
     if not npx:
         raise SystemExit('Node.js/npx is required')
     codes = sorted({ord(ch) for ch in characters})
     subprocess.run([
-        npx, '--yes', 'lv_font_conv@1.5.3', '--font', str(FONT_PATH),
+        npx, '--yes', 'lv_font_conv@1.5.3', '--font', str(font_path),
         '--size', str(size), '--bpp', '4', '--format', 'lvgl',
-        '--range', ','.join(f'0x{cp:x}' for cp in codes), '--no-compress',
+        '--range', ','.join(f'0x{cp:x}' for cp in codes),
         '--autohint-strong', '--no-kerning', '--lv-include', '../ui.h',
         '--lv-font-name', name, '--lv-fallback', fallback,
         '-o', str(ROOT / f'src/ui/fonts/{name}.c'),
@@ -38,9 +38,18 @@ if __name__ == '__main__':
     text = '\n'.join(p.read_text('utf-8-sig') for p in (ROOT / 'src').rglob('*')
                      if p.suffix in ('.c', '.cpp', '.h') and 'fonts' not in p.parts)
     strings = re.findall(r'"((?:\\.|[^"\\])*)"', text)
-    chars = ''.join(chr(cp) for cp in range(32, 127))
-    chars += ''.join(ch for value in strings for ch in value
-                     if '\u4e00' <= ch <= '\u9fff' or ch in '，。！？：；（）')
-    small = generate_font('ui_font_tencent_w7_14', 14, chars, 'lv_font_montserrat_14')
+    from fontTools.ttLib import TTFont
+    chars = ''.join(chr(cp) for cp in range(32,127))
+    chars += ''.join(ch for value in strings for ch in value if ord(ch)>=160 and ch.isprintable())
+    cmap=TTFont(FONT_PATH).getBestCmap()
+    primary=''.join(ch for ch in chars if ord(ch) in cmap)
+    supplemental=''.join(ch for ch in chars if ord(ch) not in cmap)
+    if supplemental:
+        noto=Path(os.environ.get('XTOUCH_NOTO_FONT','NotoSansCJKkr-Regular.otf'))
+        missing=set(map(ord,supplemental))-set(TTFont(noto).getBestCmap())
+        if missing:raise SystemExit(f'Unsupported glyphs: {missing}')
+        generate_font('ui_font_noto_14',14,supplemental,'lv_font_montserrat_14',noto)
+    small=generate_font('ui_font_tencent_w7_14',14,primary,'ui_font_noto_14')
     large = generate_font('ui_font_tencent_w7_28', 28, '0123456789.-+/%:°NAC ', 'lv_font_montserrat_28')
-    print(f'Tencent W7: {small} UI glyphs, {large} numeric glyphs')
+    generate_font('ui_font_tencent_w7_24', 24, '0123456789.- ', 'lv_font_montserrat_14')
+    print(f'Tencent W7: {small} UI glyphs, {large} numeric glyphs; Noto: {len(set(supplemental))}')

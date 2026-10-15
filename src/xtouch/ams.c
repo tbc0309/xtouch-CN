@@ -10,7 +10,7 @@ void xtouch_ams_parse_tray_now(const char *tray_now)
     else
     {
         int tray_now_int = atoi(tray_now);
-        if (tray_now_int >= 0 && tray_now_int < 16)
+        if (tray_now_int >= 0 && tray_now_int < XTOUCH_MAX_AMS_SLOTS)
         {
             bambuStatus.m_ams_id = tray_now_int >> 2;
             bambuStatus.m_tray_id = tray_now_int & 0x3;
@@ -59,32 +59,4 @@ void xtouch_ams_parse_status(int ams_status)
     {
         bambuStatus.ams_status_main = AMS_STATUS_MAIN_UNKNOWN;
     }
-}
-
-bool xtouch_has_ams() { return bambuStatus.ams_exist_bits != 0; }
-
-bool xtouch_can_load_filament()
-{
-    bool result = false;
-    if (!xtouch_has_ams())
-        return true;
-
-    if (bambuStatus.ams_status_main == AMS_STATUS_MAIN_IDLE && bambuStatus.hw_switch_state == 1 && bambuStatus.m_tray_now == 255)
-    {
-        return true;
-    }
-    return result;
-}
-
-bool xtouch_can_unload_filament()
-{
-    bool result = false;
-    if (!xtouch_has_ams())
-        return true;
-
-    if (bambuStatus.ams_status_main == AMS_STATUS_MAIN_IDLE && bambuStatus.hw_switch_state == 1 && bambuStatus.m_tray_now == 255)
-    {
-        return true;
-    }
-    return result;
 }

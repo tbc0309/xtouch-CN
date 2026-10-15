@@ -2,6 +2,7 @@
 #define _XLCD_DEVICE
 
 #include <Arduino.h>
+#include "ui/filament_actions.h"
 
 #define XTOUCH_DEVICE_CONTROL_MOVE_SPEED_XY 3000
 #define XTOUCH_DEVICE_CONTROL_MOVE_SPEED_Z 1500
@@ -245,40 +246,59 @@ void xtouch_device_onNozzleDown(lv_msg_t *m)
     xtouch_device_pushall();
 }
 
-void xtouch_device_onLoadFilament(lv_msg_t *m)
+/* Standard single-extruder AMS/external-spool protocol, matching Bambu Studio.
+   https://github.com/bambulab/BambuStudio/blob/master/src/slic3r/GUI/DeviceManager.cpp */
+static String xtouch_filament_pending_sequence;
+static unsigned xtouch_filament_pending_printer;
+static unsigned long xtouch_filament_sent_at;
+String xtouch_device_filament_command(const struct ui_filament_request &request,
+    const String &sequence=xtouch_device_next_sequence())
 {
-    if (xtouch_can_load_filament())
-    {
-        xtouch_device_gcode_line("M620 S254\nM106 S255\nM104 S250\nM17 S\nM17 X0.5 Y0.5\nG91\nG1 Y-5 F1200\nG1 Z3\nG90\nG28 X\nM17 R\nG1 X70 F21000\nG1 Y245\nG1 Y265 F3000\nG4\nM106 S0\nM109 S250\nG1 X90\nG1 Y255\nG1 X120\nG1 X20 Y50 F21000\nG1 Y-3\nT254\nG1 X54\nG1 Y265\nG92 E0\nG1 E40 F180\nG4\nM104 S0\nG1 X70 F15000\nG1 X76\nG1 X65\nG1 X76\nG1 X65\nG1 X90 F3000\nG1 Y255\nG1 X100\nG1 Y265\nG1 X70 F10000\nG1 X100 F5000\nG1 X70 F10000\nG1 X100 F5000\nG1 X165 F12000\nG1 Y245\nG1 X70\nG1 Y265 F3000\nG91\nG1 Z-3 F1200\nG90\nM621 S254\n\n");
+    StaticJsonDocument<384> json;
+    JsonObject command = json.createNestedObject("print");
+    command["sequence_id"] = sequence;
+    command["ams_id"] = request.tray == 254 ? 254 : request.tray / 4;
+    command["slot_id"] = request.tray == 254 ? 0 : request.tray % 4;
+    if (request.action == UI_FILAMENT_REREAD) {
+        command["command"] = "ams_get_rfid";
+    } else {
+        command["command"] = "ams_change_filament";
+        int target=ui_filament_temperature(request.tray);
+        int current=ui_filament_temperature(bambuStatus.m_tray_now);
+        /* Studio defaults to 210 C for an unload without material metadata. */
+        command["curr_temp"] = current ? current : (target ? target : 210);
+        command["tar_temp"] = target ? target : 210;
+        command["target"] = request.action == UI_FILAMENT_UNLOAD ? 255 : request.tray;
+        if (request.action == UI_FILAMENT_UNLOAD) command["slot_id"] = 255;
     }
+    String result; serializeJson(json,result);
+    return result;
+}
+void xtouch_device_onFilamentAction(void *subscription, lv_msg_t *message)
+{
+    if (!message || !message->payload) return;
+    const struct ui_filament_request &request = *static_cast<const struct ui_filament_request *>(message->payload);
+    if (request.printer != xtouch_printer_active() || request.tray != ui_filament_selected() ||
+        !ui_filament_allowed(request.action,request.tray)) return;
+    static unsigned long last_command = 0;
+    if (last_command && millis()-last_command < 2000) return;
+    last_command = millis();
+    xtouch_filament_pending_sequence=xtouch_device_next_sequence();
+    xtouch_filament_pending_printer=request.printer;
+    xtouch_filament_sent_at=millis();
+    xtouch_device_publish(xtouch_device_filament_command(request,xtouch_filament_pending_sequence));
 }
 
-void xtouch_device_onUnloadFilament(lv_msg_t *m)
+void xtouch_device_filament_reply(JsonObjectConst report)
 {
-    if (xtouch_bblp_is_x1Series() && !bambuStatus.ams_support_virtual_tray)
-    {
-
-        DynamicJsonDocument json(256);
-        json["print"]["command"] = "gcode_file";
-        json["print"]["param"] = "/usr/etc/print/filament_unload.gcode";
-        json["print"]["sequence_id"] = xtouch_device_next_sequence();
-        String result;
-        serializeJson(json, result);
-        xtouch_device_publish(result);
-    }
-    else if (xtouch_bblp_is_p1Series() || (xtouch_bblp_is_x1Series() && bambuStatus.ams_support_virtual_tray))
-    {
-        xtouch_device_gcode_line("M620 S255\nM106 P1 S255\nM104 S250\nM17 S\nM17 X0.5 Y0.5\nG91\nG1 Y-5 F3000\nG1 Z3 F1200\nG90\nG28 X\nM17 R\nG1 X70 F21000\nG1 Y245\nG1 Y265 F3000\nG4\nM106 P1 S0\nM109 S250\nG1 X90 F3000\nG1 Y255 F4000\nG1 X100 F5000\nG1 X120 F21000\nG1 X20 Y50\nG1 Y-3\nT255\nG4\nM104 S0\nG1 X70 F3000\n\nG91\nG1 Z-3 F1200\nG90\nM621 S255\n\n");
-    }
-    else
-    {
-        DynamicJsonDocument json(256);
-        json["print"]["command"] = "unload_filament";
-        json["print"]["sequence_id"] = xtouch_device_next_sequence();
-        String result;
-        serializeJson(json, result);
-        xtouch_device_publish(result);
-    }
+    /* Replies share a topic with other apps: only report this device's request. */
+    if (!xtouch_filament_pending_sequence.length() ||
+        xtouch_filament_pending_printer!=xtouch_printer_active()) return;
+    if (millis()-xtouch_filament_sent_at>15000) {xtouch_filament_pending_sequence="";return;}
+    if (report["sequence_id"].as<String>()!=xtouch_filament_pending_sequence) return;
+    xtouch_filament_pending_sequence="";
+    uint32_t error=report["err_code"] | 0UL;
+    if (error) ui_filament_report_error(error);
 }
 
 void xtouch_device_command_ams_control(void *s, lv_msg_t *m)

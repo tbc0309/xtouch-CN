@@ -213,6 +213,7 @@ void xtouch_screen_setup()
     static lv_indev_drv_t indev_drv;
     lv_indev_drv_init(&indev_drv);
     indev_drv.type = LV_INDEV_TYPE_POINTER;
+    indev_drv.long_press_time = 700; // Deliberate hold opens the device picker.
     indev_drv.read_cb = xtouch_screen_touchRead;
     lv_indev_drv_register(&indev_drv);
 

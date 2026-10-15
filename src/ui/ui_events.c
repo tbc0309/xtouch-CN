@@ -1,3 +1,4 @@
+#include "filament_actions.h"
 #include "ui.h"
 #include "../../src/xtouch/types.h"
 
@@ -144,14 +145,5 @@ void onNozzleDown(lv_event_t *e)
     
 }
 
-void onFilamentUnloadConfirm() { lv_msg_send(XTOUCH_COMMAND_UNLOAD_FILAMENT, NULL); }
-void onFilamentUnload(lv_event_t *e)
-{
-    ui_confirmPanel_show(XTOUCH_TEXT_REMOVE_FILAMENT, onFilamentUnloadConfirm);
-}
-
-void onFilamentLoadConfirm() { lv_msg_send(XTOUCH_COMMAND_LOAD_FILAMENT, NULL); }
-void onFilamentLoad(lv_event_t *e)
-{
-    ui_confirmPanel_show(XTOUCH_TEXT_LOAD_CONFIRM, onFilamentLoadConfirm);
-}
+void onFilamentUnload(lv_event_t *e) { ui_filament_request_action(UI_FILAMENT_UNLOAD); }
+void onFilamentLoad(lv_event_t *e) { ui_filament_request_action(UI_FILAMENT_LOAD); }

@@ -2,26 +2,54 @@
 
 简体中文 | [English](DEVELOPMENT.en.md) | [README](../README.md)
 
+## 构建产物
+
+环境为 `esp32dev`，应用输出 `.pio/build/esp32dev/firmware.bin`；打包文件位于相邻的 `xtouch-bin/ota/` 和 `xtouch-bin/webusb/`。普通构建不会改变 `version.json` 或仓库根目录的 `ota.json`。
+
 ## 结构
 
 - `src/ui/`：LVGL 页面、组件和交互；`ui_loaders.c` 负责切页和切换提示。
-- `src/ui/i18n/`：简体、繁体、英文独立文案，`strings.h` 统一选择；业务代码使用 `XTOUCH_TEXT_*`。
-- `src/xtouch/config.h`、`printers.h`：兼容单设备 `mqtt` 配置，解析最多四个 `printers` 条目。
+- `src/ui/i18n/`：六种语言独立文案，`strings.c` 统一查询；业务代码使用 `XTOUCH_TEXT_*`。
+- `src/xtouch/config.h`、`printers.h`：兼容单设备 `mqtt` 配置，解析最多 100 个 `printers` 条目。
 - `src/xtouch/mqtt.h`：一次只连接一台，切换清理旧状态，连接失败采用退避重试。
 - `src/xtouch/storage.h/.cpp`：内部 SPIFFS 原子保存、SD 镜像同步、日期/版本冲突处理和删除标记；其他模块不直接读写 SD 配置。
-- `src/xtouch/settings.h`：设置持久化；语言值为 `zh`、`zh-TW`、`en`。
+- `src/xtouch/settings.h`：设置持久化；语言值为 `zh`、`zh-TW`、`en`、`fr`、`ru`、`ja`。
 - `src/xtouch/firmware.h`、`net.h`、`ota-certs.h`：版本判断、HTTPS 下载、校验与安装。
 - `resources/User_Setup.h`：2.8 英寸硬件与屏幕驱动；`resources/lv_conf.h`：全局字体和 LVGL 内存配置。
 
+机型图片、AMS 分组和仓温遥测见 [机型与 MQTT 能力](PRINTER-MODELS.md)。
+
 ## 字体与事件生命周期
 
-普通界面使用 W7 14px，大号数字使用 W7 28px，图标保持上游图标字体。字体按三种语言的静态文案生成灰阶子集；外部任务名和自定义设备名中的任意汉字不保证覆盖。
+普通界面使用 W7 14px，大号数字使用 W7 28px，图标保持上游图标字体。字体按六种语言的静态文案生成灰阶子集；外部任务名和自定义设备名中的任意汉字不保证覆盖。
 
-新增文案须补齐 `zh_cn.h`、`zh_tw.h`、`en.h` 和 `strings.h`，按 README 中的方法重新生成字库并运行 `python scripts/check_localization.py`。原始 TTF 不随代码发布。繁体文案为独立文件，构建不依赖转换软件。
+新增文案须补齐 六个语言文件以及 `strings.h/.c`，按下方方法重新生成字库并运行 `python scripts/check_localization.py`。原始 TTF 不随代码发布。繁体文案为独立文件，构建不依赖转换软件。
 
 切换设备与语言先排队，在主循环执行，避免删除正在处理事件的控件。LVGL 使用有限的内存池，切页先释放旧页再创建新页，中间不刷新空白页；不要同时缓存多个完整页面。
 
 内部配置见 [存储说明](STORAGE.md)。`uploadfs` 或擦除 SPIFFS 分区会删除内部配置，不是普通固件升级步骤；调试前先确认 SD 备份已同步。
+
+## 字库生成
+
+设置页可选择六种语言，立即切换并保存到内部 `/xtouch/settings.json`，有 SD 卡时同步备份，重启后保留。独立语言文件位于 `src/ui/i18n/`，由 `strings.c` 统一查询。
+
+- 六种语言文案与选择入口：`src/ui/i18n/`；新增文案须补齐六种语言。
+- 全局字体：`resources/lv_conf.h` 中的 `LV_FONT_DEFAULT` 和 `XTOUCH_FONT_NUMERIC`。
+- 字库生成：`scripts/localize_zh.py`，只生成字体，不改写应用源码。
+- 覆盖检查：`python scripts/check_localization.py`。
+
+更换文案或字体时安装 Node.js，提供自己有权使用的腾讯 W7 TTF，再生成子集：
+
+```powershell
+$env:XTOUCH_W7_FONT='C:\fonts\Tencent-W7.ttf'
+$env:XTOUCH_NOTO_FONT='C:\fonts\NotoSansCJKkr-Regular.otf'
+python -m pip install fonttools
+python scripts/localize_zh.py
+python scripts/check_localization.py
+python -m platformio run
+```
+
+Noto 源字体见 [官方仓库](https://github.com/notofonts/noto-cjk/blob/main/Sans/OTF/Korean/NotoSansCJKkr-Regular.otf)，仅抽取 W7 缺少的界面字符，许可见 `resources/fonts/OFL-Noto.txt`。原始 TTF/OTF 不随仓库分发。字体相关权利归原权利人所有，使用和再分发需自行确认对应授权。默认使用仓库内的厂商错误数据库；如需重新抓取，安装 Node.js 并设置 `XTOUCH_REFRESH_ERRORS=1` 后编译。
 
 ## 发布
 

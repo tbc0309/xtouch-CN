@@ -20,6 +20,7 @@
 #include "xtouch/settings.h"
 #include "xtouch/net.h"
 #include "xtouch/firmware.h"
+#include "xtouch/ota_request.h"
 #include "xtouch/mqtt.h"
 #include "xtouch/sensors/chamber.h"
 #include "xtouch/events.h"
@@ -97,6 +98,13 @@ void loop()
     lv_obj_del(ui_hmsComponent);
     initTopLayer();
     loadScreen(4);
+  }
+  if(xtouch_ota_take_request()) {
+    // Check after returning from the touch event, with printer TLS buffers freed.
+    xtouch_pubSubClient.disconnect();xtouch_wiFiClientSecure.stop();xtouch_mqtt_hasStatus=false;
+    loadScreen(-1);xtouch_firmware_checkOnlineFirmwareUpdate(true);
+    uint32_t shown=millis();while(millis()-shown<1800){lv_timer_handler();delay(5);}
+    loadScreen(4);xtouch_mqtt_nextAttempt=millis();
   }
   xtouch_mqtt_loop();
   static bool clockReady = false;

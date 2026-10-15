@@ -27,6 +27,65 @@ static bool xtouch_ota_sync_clock()
     return time(NULL) > 1704067200;
 }
 
+// Boot manifest lookup has one total budget. Do not use WiFi.hostByName here:
+// its built-in DNS wait can block startup for fifteen seconds.
+#include <lwip/dns.h>
+#include <lwip/tcpip.h>
+static ip_addr_t xtouch_manifest_address;
+static volatile bool xtouch_manifest_dns_done=false;
+static void xtouch_manifest_dns_result(const char *,const ip_addr_t *ip,void *)
+{
+    if(ip)xtouch_manifest_address=*ip;
+    xtouch_manifest_dns_done=true;
+}
+static void xtouch_manifest_dns_start(void *)
+{
+    err_t result=dns_gethostbyname("raw.githubusercontent.com",&xtouch_manifest_address,xtouch_manifest_dns_result,NULL);
+    if(result!=ERR_INPROGRESS)xtouch_manifest_dns_done=true;
+}
+class XTouchManifestTLS:public WiFiClientSecure { public: void connectionBudget(int ms){_timeout=ms;} };
+static bool xtouch_ota_fetch_manifest(String &body)
+{
+    const uint32_t started=millis();
+    struct Timing {uint32_t start;~Timing(){ConsoleInfo.printf("[OTA] manifest check elapsed=%u ms\n",unsigned(millis()-start));}} timing{started};
+    auto remaining=[&]()->bool{return millis()-started<14500;};
+    xtouch_start_clock_sync();
+    while(time(NULL)<1704067200 && millis()-started<6000)delay(10);
+    if(time(NULL)<1704067200)return false;
+    // Static DNS callback storage remains valid even if a late reply arrives.
+    ip_addr_set_zero(&xtouch_manifest_address);xtouch_manifest_dns_done=false;
+    if(tcpip_callback(xtouch_manifest_dns_start,NULL)!=ERR_OK)return false;
+    uint32_t dnsStart=millis();
+    while(!xtouch_manifest_dns_done && millis()-dnsStart<1500)delay(5);
+    if(!xtouch_manifest_dns_done || ip_addr_isany(&xtouch_manifest_address) || !IP_IS_V4(&xtouch_manifest_address))return false;
+    XTouchManifestTLS client;client.setCACert(xtouch_ota_ca);
+    client.setTimeout(1);client.setHandshakeTimeout(2);
+    IPAddress ip(ip_2_ip4(&xtouch_manifest_address)->addr);
+    // The host argument preserves certificate and SNI verification with a resolved IP.
+    client.connectionBudget(1000);
+    if(!client.connect(ip,443,"raw.githubusercontent.com",xtouch_ota_ca,NULL,NULL))return false;
+    if(!remaining()){client.stop();return false;}
+    client.print("GET /tbc0309/xtouch-CN/main/ota.json HTTP/1.0\r\nHost: raw.githubusercontent.com\r\nConnection: close\r\n\r\n");
+    String header;header.reserve(1024);body="";body.reserve(1024);bool headers=false,valid=false;int length=-1;
+    while(remaining()){
+        if(client.available()){
+            char ch=(char)client.read();
+            if(!headers){
+                header+=ch;if(header.length()>4096)break;
+                if(header.endsWith("\r\n\r\n")){
+                    valid=header.startsWith("HTTP/1.1 200 ") || header.startsWith("HTTP/1.0 200 ");
+                    String lower=header;lower.toLowerCase();int at=lower.indexOf("content-length:");
+                    if(at>=0)length=lower.substring(at+15).toInt();
+                    if(!valid || lower.indexOf("transfer-encoding:")>=0 || length>16384)break;
+                    headers=true;
+                }
+            }else{body+=ch;if(body.length()>16384)break;if(length>=0 && body.length()==(unsigned)length){client.stop();return true;}}
+        }else if(!client.connected()){bool ok=headers && valid && body.length()>0 && (length<0 || body.length()==(unsigned)length);client.stop();return ok;}
+        else delay(1);
+    }
+    client.stop();body="";ConsoleInfo.println("[OTA] boot check skipped: timeout or invalid response");return false;
+}
+
 static bool xtouch_ota_open(HTTPClient &http, WiFiClientSecure &client,
                              const char *url, size_t limit, size_t expectedSize, int &total)
 {

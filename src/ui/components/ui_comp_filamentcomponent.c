@@ -1,4 +1,6 @@
 #include "../ui.h"
+#include "../ams_display.h"
+#include "../filament_actions.h"
 
 
 void ui_event_comp_filamentComponent_onNozzleTemp(lv_event_t *e)
@@ -53,23 +55,6 @@ void ui_event_comp_filamentComponent_filamentScreenLoad(lv_event_t *e)
     if (event_code == LV_EVENT_CLICKED)
     {
         onFilamentLoad(e);
-    }
-}
-
-void ui_filamentComponent_onAMSBits(lv_event_t *e)
-{
-    lv_obj_t *target = lv_event_get_target(e);
-    lv_msg_t *m = lv_event_get_msg(e);
-
-    lv_obj_t *unload = ui_comp_get_child(target, UI_COMP_FILAMENTCOMPONENT_FILAMENTSCREENFILAMENT_FILAMENTSCREENUNLOAD);
-
-    if (bambuStatus.ams_exist_bits != 0 && bambuStatus.ams_status_main == AMS_STATUS_MAIN_IDLE && bambuStatus.hw_switch_state == 1 && bambuStatus.m_tray_now == 255)
-    {
-        lv_obj_clear_state(unload, LV_STATE_DISABLED);
-    }
-    else
-    {
-        lv_obj_add_state(unload, LV_STATE_DISABLED);
     }
 }
 
@@ -317,13 +302,11 @@ lv_obj_t *ui_filamentComponent_create(lv_obj_t *comp_parent)
     lv_obj_add_event_cb(cui_filamentScreenLoad, ui_event_comp_filamentComponent_filamentScreenLoad, LV_EVENT_ALL, children);
     lv_obj_add_event_cb(cui_filamentScreenNozzleIcon, ui_event_comp_filamentComponent_onNozzleTempClick, LV_EVENT_ALL, children);
 
-    lv_obj_add_event_cb(cui_filamentComponent, ui_filamentComponent_onAMSBits, LV_EVENT_MSG_RECEIVED, NULL);
-    lv_msg_subsribe_obj(XTOUCH_ON_AMS_BITS, cui_filamentComponent, NULL);
-
-
     lv_obj_add_event_cb(cui_filamentScreenNozzleTemp, ui_event_comp_filamentComponent_onNozzleTemp, LV_EVENT_MSG_RECEIVED, NULL);
     lv_msg_subsribe_obj(XTOUCH_ON_NOZZLE_TEMP, cui_filamentScreenNozzleTemp, NULL);    
 
+    ui_ams_filament_layout(cui_filamentComponent);
+    ui_filament_bind(cui_filamentComponent);
     ui_comp_filamentComponent_create_hook(cui_filamentComponent);
     return cui_filamentComponent;
 }

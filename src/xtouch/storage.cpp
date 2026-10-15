@@ -1,10 +1,12 @@
 #include "storage.h"
+#include "printers.h"
 #include <SPIFFS.h>
 #include <SD.h>
 #include <MD5Builder.h>
 #include <esp_partition.h>
 #include <math.h>
 #include <time.h>
+#include <utility>
 
 namespace {
 const char *paths[] = {"/xtouch.json", "/xtouch/settings.json", "/xtouch/touch.json", "/xtouch/hardware.json"};
@@ -23,30 +25,38 @@ uint32_t now() { time_t value = time(nullptr); return value >= 1577836800 && val
 uint32_t credible(uint32_t value) {
     return value >= 1577836800 && value < 4102444800UL && (!now() || value <= now() + 120) ? value : 0;
 }
-String digest(JsonDocument &doc) {
-    String body; serializeJson(doc, body);
-    MD5Builder hash; hash.begin(); hash.add(body); hash.calculate(); return hash.toString();
-}
+// Stream digests without allocating another serialized configuration string.
+class HashWriter:public Print {
+public:
+    MD5Builder hash;
+    HashWriter(){hash.begin();}
+    size_t write(uint8_t c)override{hash.add(&c,1);return 1;}
+    size_t write(const uint8_t *data,size_t size)override{hash.add((uint8_t*)data,size);return size;}
+    String finish(){hash.calculate();return hash.toString();}
+};
+String digest(JsonDocument &doc){HashWriter writer;serializeJson(doc,writer);return writer.finish();}
 struct Record {
     explicit Record(size_t capacity) : data(capacity) {}
     DynamicJsonDocument data;
     String hash;
     uint32_t revision = 0, modified = 0;
+    bool ioError=false;
     bool valid = false, deleted = false, dirty = false, external = false, legacy = false;
 };
 bool validPayload(const char *path, JsonDocument &doc) {
-    if (!doc.is<JsonObject>() || measureJson(doc) > 4096) return false;
+    if (!doc.is<JsonObject>() || measureJson(doc) > (!strcmp(path,paths[0])?32768:4096)) return false;
     if (!strcmp(path, paths[0])) {
         const char *ssid = doc["ssid"], *pwd = doc["pwd"];
         if (!ssid || !*ssid || strlen(ssid) > 32 || !pwd || strlen(pwd) > 64) return false;
         if (doc["printers"].is<JsonArray>()) {
             unsigned usable = 0, slot = 0;
             for (JsonVariant p : doc["printers"].as<JsonArray>()) {
-                if (slot++ >= 4) break;
+                if (slot++ >= XTOUCH_MAX_PRINTERS) return false;
                 if (p.isNull()) continue;
                 const char *host = p["host"], *code = p["accessCode"], *serial = p["serialNumber"];
                 if (!host || !*host || strlen(host) >= 64 || !code || strlen(code) != 8 ||
-                    !serial || !*serial || strlen(serial) >= 32) continue;
+                    !serial || !*serial || strlen(serial) >= 32 ||
+                    strlen(p["name"] | "")>=64 || strlen(p["printerModel"] | "")>=32) continue;
                 usable++;
             }
             return usable > 0;
@@ -69,19 +79,30 @@ bool validPayload(const char *path, JsonDocument &doc) {
         doc["chamberTempDiff"].as<int>() < -128 || doc["chamberTempDiff"].as<int>() > 127)) return false;
     if (doc.containsKey("language")) {
         const char *language = doc["language"];
-        if (!language || (strcmp(language, "zh") && strcmp(language, "zh-TW") && strcmp(language, "en"))) return false;
+        if (!language || (strcmp(language,"zh") && strcmp(language,"zh-TW") && strcmp(language,"en") && strcmp(language,"fr") && strcmp(language,"ru") && strcmp(language,"ja"))) return false;
     }
     for (const char *key : {"tftInvert", "ota", "wop", "chamberTemp", "auxFan", "chamberFan"})
         if (doc.containsKey(key) && !doc[key].is<bool>()) return false;
     return true;
 }
 void read(fs::FS &fs, const char *path, Record &record, bool internal, const char *logicalPath = nullptr) {
+    record.valid=false;record.ioError=false;
     if (!fs.exists(path)) return;
     File file = fs.open(path, FILE_READ);
-    if (!file || file.size() > 6144 || !file.size()) { if (file) file.close(); return; }
+    if (!file || file.size() > 33792 || !file.size()) { if (file) file.close(); return; }
     uint32_t modified = credible(file.getLastWrite());
-    auto error = deserializeJson(record.data, file); file.close();
-    if (error || !record.data.is<JsonObject>()) return;
+    auto error=deserializeJson(record.data,file);
+    // Grow only the file being parsed, never to the size of an unrelated backup.
+    bool config=!strcmp(logicalPath?logicalPath:path,paths[0]);
+    while(error==DeserializationError::NoMemory && config && record.data.capacity()<49152){
+        size_t next=min((size_t)49152,max((size_t)8192,record.data.capacity()*2));
+        record.data.clear();record.data.shrinkToFit();record.data=DynamicJsonDocument(next);
+        if(record.data.capacity()<next)break;
+        file.seek(0);error=deserializeJson(record.data,file);
+    }
+    file.close();
+    if(error){record.ioError=error==DeserializationError::NoMemory;if(record.ioError)Serial.printf("[STORE] insufficient temporary memory: %s\n",path);return;}
+    if(!record.data.is<JsonObject>())return;
     JsonObject meta = record.data["_storage"];
     record.legacy = meta.isNull();
     String previousHash = meta["digest"] | "";
@@ -106,7 +127,7 @@ void read(fs::FS &fs, const char *path, Record &record, bool internal, const cha
 bool copyFile(fs::FS &from, const char *source, fs::FS &to, const char *target) {
     if (!from.exists(source)) return false;
     File input = from.open(source, FILE_READ);
-    if (!input || input.size() > 6144) return false;
+    if (!input || input.size() > 33792) return false;
     File output = to.open(target, FILE_WRITE);
     if (!output) { input.close(); return false; }
     uint8_t block[256]; bool ok = true;
@@ -145,21 +166,22 @@ bool normalizeConfig(const char *path, Record &record) {
     return !record.data.overflowed();
 }
 bool write(fs::FS &fs, const char *path, Record &record) {
-    DynamicJsonDocument encoded(capacityFor(path)); encoded.set(record.data);
-    JsonObject meta = encoded.createNestedObject("_storage");
-    meta["format"] = 1; meta["revision"] = record.revision; meta["modified"] = record.modified;
-    meta["digest"] = record.hash; meta["deleted"] = record.deleted; meta["dirty"] = record.dirty;
-    if (encoded.overflowed()) return false;
-    String temporary = String(path) + ".tmp", backup = String(path) + ".previous";
-    if (fs.exists(temporary)) fs.remove(temporary);
-    File file = fs.open(temporary, FILE_WRITE);
-    if (!file) return false;
-    size_t count = serializeJson(encoded, file); file.flush(); file.close();
-    Record check(capacityFor(path)); read(fs, temporary.c_str(), check, true, path);
-    // Validation depends on the logical path rather than the temporary filename.
-    if (!count || !check.valid || check.hash != record.hash || check.deleted != record.deleted) {
-        fs.remove(temporary); return false;
-    }
+    if(!record.deleted && !validPayload(path,record.data))return false;
+    JsonObject meta=record.data.createNestedObject("_storage");
+    meta["format"]=1;meta["revision"]=record.revision;meta["modified"]=record.modified;
+    meta["digest"]=record.hash;meta["deleted"]=record.deleted;meta["dirty"]=record.dirty;
+    if(record.data.overflowed()){record.data.remove("_storage");return false;}
+    String expected=digest(record.data);
+    String temporary=String(path)+".tmp",backup=String(path)+".previous";
+    if(fs.exists(temporary))fs.remove(temporary);
+    File file=fs.open(temporary,FILE_WRITE);
+    if(!file){record.data.remove("_storage");return false;}
+    size_t count=serializeJson(record.data,file);file.flush();file.close();record.data.remove("_storage");
+    File verify=fs.open(temporary,FILE_READ);HashWriter actual;uint8_t buffer[256];
+    bool ok=verify && verify.size()==count;
+    while(ok && verify.available()){int n=verify.read(buffer,sizeof(buffer));if(n<=0){ok=false;break;}actual.write(buffer,n);yield();}
+    verify.close();
+    if(!ok || !count || actual.finish()!=expected){Serial.printf("[STORE] verification failed %s bytes=%u\n",path,unsigned(count));fs.remove(temporary);return false;}
     if (fs.exists(backup)) fs.remove(backup);
     if (fs.exists(path) && !fs.rename(path, backup.c_str())) { fs.remove(temporary); return false; }
     if (!fs.rename(temporary.c_str(), path)) {
@@ -170,7 +192,7 @@ bool write(fs::FS &fs, const char *path, Record &record) {
 }
 void recover(const char *path) {
     Record current(capacityFor(path)); read(SPIFFS, path, current, true);
-    if (current.valid) return;
+    if (current.valid || current.ioError) return;
     String backup = String(path) + ".previous";
     if (!SPIFFS.exists(backup)) backup = String(path) + ".bak";
     Record previous(capacityFor(path)); read(SPIFFS, backup.c_str(), previous, true, path);
@@ -180,27 +202,30 @@ void recover(const char *path) {
     }
 }
 bool syncOne(const char *path, bool runtime, bool forceLocal = false) {
-    Record local(capacityFor(path)), card(capacityFor(path)); read(SPIFFS, path, local, true); read(SD, path, card, false);
-    if (!local.valid && !card.valid) return false;
-    bool legacyConfig = card.valid && !strcmp(path, paths[0]) &&
-        card.data["mqtt"].is<JsonObject>() && !card.data["printers"].is<JsonArray>();
-    if (card.valid && (card.legacy || legacyConfig) && !preserveOriginal(path)) {
-        Serial.printf("[STORE] migration backup failed: %s\n", path);
-        return false;
-    }
-    // Normalize either source before comparing content, including an already
-    // initialized 0.9.213 device whose internal copy still uses mqtt.
-    bool localConverted = local.valid && normalizeConfig(path, local);
-    if (localConverted) local.hash = digest(local.data);
-    if (card.valid && normalizeConfig(path, card)) {
-        card.hash = digest(card.data); card.external = true;
-    }
+    Record local(capacityFor(path));read(SPIFFS,path,local,true);
+    if(local.ioError)return false;
+    bool localConverted=local.valid && normalizeConfig(path,local);
+    if(localConverted)local.hash=digest(local.data);
+    // Retain comparison metadata, release the first JSON tree before reading SD.
+    local.data.clear();local.data.shrinkToFit();
+    Record card(capacityFor(path));read(SD,path,card,false);
+    if(card.ioError)return false;
+    if(!local.valid && !card.valid)return false;
+    bool legacyConfig=card.valid && !strcmp(path,paths[0]) && card.data["mqtt"].is<JsonObject>() && !card.data["printers"].is<JsonArray>();
+    if(card.valid && (card.legacy || legacyConfig) && !preserveOriginal(path))return false;
+    if(card.valid && normalizeConfig(path,card)){card.hash=digest(card.data);card.external=true;}
+    auto loadLocal=[&]()->bool{
+        card.data.clear();card.data.shrinkToFit();
+        local.data=DynamicJsonDocument(capacityFor(path));read(SPIFFS,path,local,true);
+        if(!local.valid || local.ioError)return false;
+        normalizeConfig(path,local);local.hash=digest(local.data);return true;
+    };
     if (local.valid && card.valid && local.hash == card.hash && local.deleted == card.deleted) {
         if (localConverted) {
-            local.revision++; local.dirty = true;
+            if(!loadLocal())return false;local.revision++; local.dirty = true;
             if (!write(SPIFFS, path, local)) return false;
         }
-        if ((local.dirty || card.legacy || legacyConfig) && write(SD, path, local)) { local.dirty = false; write(SPIFFS, path, local); }
+        if (local.dirty || card.legacy || legacyConfig) { if(!loadLocal())return false;if(write(SD,path,local)){local.dirty=false;write(SPIFFS,path,local);} }
         return false;
     }
     bool importCard = !local.valid;
@@ -220,6 +245,7 @@ bool syncOne(const char *path, bool runtime, bool forceLocal = false) {
         if (runtime) restartRequired = true;
         return true;
     }
+    if(!loadLocal())return false;
     if (localConverted) {
         local.revision++; local.dirty = true;
         if (!write(SPIFFS, path, local)) return false;
@@ -265,25 +291,28 @@ DynamicJsonDocument xtouch_storage_read(const char *path, size_t resultCapacity)
     DynamicJsonDocument result(resultCapacity);
     if (!ready || !knownPath(path)) return result;
     Record record(capacityFor(path)); read(SPIFFS, path, record, true);
-    if (record.valid && !record.deleted) result.set(record.data);
+    if(record.valid && !record.deleted){if(!resultCapacity)return std::move(record.data);result.set(record.data);}
     if (result.overflowed()) result.clear();
     return result;
 }
 bool xtouch_storage_write(const char *path, const JsonDocument &document) {
     if (!ready || !knownPath(path)) return false;
-    Record old(capacityFor(path)), current(capacityFor(path)); read(SPIFFS, path, old, true); current.data.set(document); current.data.remove("_storage");
-    if (current.data.overflowed() || !validPayload(path, current.data)) return false;
+    Record old(capacityFor(path));read(SPIFFS,path,old,true);
+    if(old.ioError)return false;
+    old.data.clear();old.data.shrinkToFit();
+    Record current(max(capacityFor(path),document.memoryUsage()+1024));current.data.set(document);current.data.remove("_storage");
+    if (current.data.overflowed() || !validPayload(path,current.data)){Serial.printf("[STORE] rejected %s overflow=%u bytes=%u capacity=%u\n",path,current.data.overflowed(),unsigned(measureJson(current.data)),unsigned(current.data.capacity()));return false;}
     normalizeConfig(path, current);
     if (current.data.overflowed()) return false;
     current.hash = digest(current.data);
     if (old.valid && !old.deleted && old.hash == current.hash) {
-        if (old.dirty && sdAvailable) syncOne(path, false, true);
+        if (old.dirty && sdAvailable) {current.data.clear();current.data.shrinkToFit();syncOne(path,false,true);}
         return true;
     }
     current.revision = old.revision + 1; current.modified = now(); current.dirty = true;
     if (!write(SPIFFS, path, current)) return false;
     Serial.printf("[STORE] saved %s revision=%u\n", path, current.revision);
-    if (sdAvailable) syncOne(path, false, true);
+    if (sdAvailable) {current.data.clear();current.data.shrinkToFit();syncOne(path,false,true);}
     return true;
 }
 bool xtouch_storage_delete(const char *path) {

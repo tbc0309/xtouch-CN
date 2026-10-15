@@ -76,25 +76,30 @@ void xtouch_firmware_onProgress(size_t current, size_t total)
     lv_timer_handler();
 }
 
-void xtouch_firmware_checkOnlineFirmwareUpdate(void)
+void xtouch_firmware_checkOnlineFirmwareUpdate(bool manual = false)
 {
-    if (!xTouchConfig.xTouchOTAEnabled) return;
+    if (!manual && !xTouchConfig.xTouchOTAEnabled) return;
     lv_label_set_text(introScreenCaption, XTOUCH_TEXT_CHECKING_FOR_OTA_UPDATE);
     lv_refr_now(NULL);
     ConsoleInfo.printf("[OTA] checking current=%s\n", XTOUCH_FIRMWARE_VERSION);
     fs::FS &cache = xtouch_storage_sd_available() ? static_cast<fs::FS &>(SD) : static_cast<fs::FS &>(SPIFFS);
-    if (!downloadFileToFS(cache, xtouch_paths_firmware_ota_file, xtouch_paths_firmware_ota_json)) return;
-    DynamicJsonDocument doc = xtouch_filesystem_readJson(cache, xtouch_paths_firmware_ota_json);
+    String manifest;
+    if (!xtouch_ota_fetch_manifest(manifest)) {lv_label_set_text(introScreenCaption,XTOUCH_TEXT_UPDATE_ERROR);return;}
+    DynamicJsonDocument doc(2048);
+    if(deserializeJson(doc,manifest)){lv_label_set_text(introScreenCaption,XTOUCH_TEXT_UPDATE_ERROR);return;}
+    manifest=String();
     SemVer current, remote;
     if (!xtouch_firmware_manifest_valid(doc) || !parseSemVer(XTOUCH_FIRMWARE_VERSION, current) ||
         !parseSemVer(doc["version"], remote)) {
         ConsoleError.println("[OTA] invalid manifest");
-        cache.remove(xtouch_paths_firmware_ota_json);
+        lv_label_set_text(introScreenCaption,XTOUCH_TEXT_UPDATE_ERROR);
+        if(cache.exists(xtouch_paths_firmware_ota_json))cache.remove(xtouch_paths_firmware_ota_json);
         return;
     }
     if (!isSemVerGreaterThan(remote, current)) {
         ConsoleInfo.println("[OTA] already current");
-        cache.remove(xtouch_paths_firmware_ota_json);
+        lv_label_set_text(introScreenCaption,XTOUCH_TEXT_UP_TO_DATE);
+        if(cache.exists(xtouch_paths_firmware_ota_json))cache.remove(xtouch_paths_firmware_ota_json);
         return;
     }
     // Two bounded attempts; a failed update must never prevent normal startup.
@@ -107,14 +112,21 @@ void xtouch_firmware_checkOnlineFirmwareUpdate(void)
         if (xtouch_storage_sd_available()) success = downloadFileToFS(SD, doc["url"], xtouch_paths_firmware_ota_fw,
             progress, NULL, doc["md5"], doc["size"]);
         else success = downloadFirmwareToFlash(doc["url"], doc["md5"], doc["size"], progress);
+        if(success && xtouch_storage_sd_available()) {
+            File record=SD.open(xtouch_paths_firmware_ota_json,FILE_WRITE);
+            size_t expected=measureJson(doc);
+            bool written=record && serializeJson(doc,record)==expected;
+            if(record){record.flush();record.close();}
+            if(!written){SD.remove(xtouch_paths_firmware_ota_fw);success=false;}
+        }
         if (success) {
-            if (!xtouch_storage_sd_available()) cache.remove(xtouch_paths_firmware_ota_json);
+            if(!xtouch_storage_sd_available() && cache.exists(xtouch_paths_firmware_ota_json))cache.remove(xtouch_paths_firmware_ota_json);
             ConsoleInfo.println("[OTA] verified, rebooting");
             delay(200);
             ESP.restart();
         }
     }
-    cache.remove(xtouch_paths_firmware_ota_json);
+    if(cache.exists(xtouch_paths_firmware_ota_json))cache.remove(xtouch_paths_firmware_ota_json);
     lv_label_set_text(introScreenCaption, XTOUCH_TEXT_FAILED_TO_DOWNLOAD_UPDATE);
     lv_refr_now(NULL);
 }
@@ -151,7 +163,7 @@ void xtouch_firmware_checkFirmwareUpdate(void)
     }
     firmware.close();
     Update.onProgress(nullptr);
-    SD.remove(xtouch_paths_firmware_ota_json);
+    if(SD.exists(xtouch_paths_firmware_ota_json))SD.remove(xtouch_paths_firmware_ota_json);
     SD.remove(xtouch_paths_firmware_ota_fw);
     ConsoleInfo.printf("[OTA] install %s\n", installed ? "SUCCESS" : "REJECTED");
     lv_label_set_text(introScreenCaption, installed ? XTOUCH_TEXT_UPDATE_FINISHED : XTOUCH_TEXT_UPDATE_ERROR);

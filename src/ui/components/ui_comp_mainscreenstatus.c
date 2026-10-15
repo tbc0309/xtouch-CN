@@ -1,4 +1,16 @@
 #include "../ui.h"
+#include "../printer_models.h"
+
+static void update_printer_art(lv_event_t *e)
+{
+    lv_obj_t *image = lv_event_get_target(e);
+    // Artwork follows the connected printer's report, never a configured hint.
+    const lv_img_dsc_t *source = ui_printer_model_image(bambuStatus.printer_type);
+    lv_obj_t *logo = lv_obj_get_child(lv_obj_get_parent(image), 0);
+    if (source) { lv_img_set_src(image, source); lv_obj_clear_flag(image, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(logo, LV_OBJ_FLAG_HIDDEN); }
+    else { lv_obj_add_flag(image, LV_OBJ_FLAG_HIDDEN); lv_obj_clear_flag(logo, LV_OBJ_FLAG_HIDDEN); }
+}
+
 
 // COMPONENT mainScreenStatus
 
@@ -34,6 +46,11 @@ lv_obj_t *ui_mainScreenStatus_create(lv_obj_t *comp_parent)
     lv_label_set_text(cui_mainScreenStatusLogo, "4");
     lv_obj_set_style_text_font(cui_mainScreenStatusLogo, &ui_font_xperiments, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(cui_mainScreenStatusLogo, lv_color_hex(0xAAAAAA), LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_obj_t *printer = lv_img_create(cui_mainScreenStatus);
+    lv_obj_add_event_cb(printer, update_printer_art, LV_EVENT_MSG_RECEIVED, NULL);
+    lv_msg_subsribe_obj(XTOUCH_ON_MODEL, printer, NULL);
+    lv_event_send(printer, LV_EVENT_MSG_RECEIVED, NULL);
 
     lv_obj_t *cui_mainScreenStatusCaption;
     cui_mainScreenStatusCaption = lv_label_create(cui_mainScreenStatus);

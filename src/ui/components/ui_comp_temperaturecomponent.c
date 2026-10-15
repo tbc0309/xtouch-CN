@@ -1,10 +1,9 @@
 #include "../ui.h"
 
 lv_obj_t *ui_temperatureComponent_input_target;
-bool ui_temperatureComponent_backOrCancel = true;
 int ui_temperatureComponent_backToScreen = -1;
 
-void ui_temperatureComponent_show_backOrCancel()
+static void update_back_key()
 {
     if (ui_temperatureComponent_input_target != NULL)
     {
@@ -17,7 +16,7 @@ void ui_temperatureComponent_on_keypad(char *key)
 {
 
     lv_textarea_add_char(ui_temperatureComponent_input_target, key[0]);
-    ui_temperatureComponent_show_backOrCancel();
+    update_back_key();
 }
 void ui_temperatureComponent_hide_keypad()
 {
@@ -30,13 +29,27 @@ void ui_temperatureComponent_hide_keypad()
     lv_obj_t *aux = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTFANS_TEMPERATURECOMPONENTAUXFAN);
     lv_obj_t *chamber = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTFANS_TEMPERATURECOMPONENTCHAMBERFAN);
 
-    lv_obj_set_style_text_color(ui_temperatureComponent_input_target, controlMode.target_bed_temper != 0 ? lv_color_hex(0xff682a) : lv_color_hex(0x777777), LV_PART_TEXTAREA_PLACEHOLDER | LV_STATE_DEFAULT);
+    if (ui_temperatureComponent_input_target) {
+        lv_obj_t *parent=lv_obj_get_parent(ui_temperatureComponent_input_target);
+        bool heating=parent==bed ? bambuStatus.bed_target_temper>0 : parent==nozzle && bambuStatus.nozzle_target_temper>0;
+        lv_obj_set_style_text_color(ui_temperatureComponent_input_target,lv_color_hex(heating ? 0xff682a : 0x777777),LV_PART_TEXTAREA_PLACEHOLDER);
+    }
 
     lv_obj_clear_flag(temps, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(fans, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(ui_sidebarComponent, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
 
+    /* Restore the overview after an isolated editor is closed. */
+    lv_obj_clear_flag(bed, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(nozzle, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(part, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(aux, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(chamber, LV_OBJ_FLAG_HIDDEN);
+    if ((xtouch_bblp_is_p1p() || xtouch_bblp_is_x1()) && !xTouchConfig.xTouchAuxFanEnabled)
+        lv_obj_add_flag(aux, LV_OBJ_FLAG_HIDDEN);
+    if (xtouch_bblp_is_p1p() && !xTouchConfig.xTouchChamberFanEnabled)
+        lv_obj_add_flag(chamber, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_state(bed, LV_STATE_CHECKED);
     lv_obj_clear_state(nozzle, LV_STATE_CHECKED);
     lv_obj_clear_state(part, LV_STATE_CHECKED);
@@ -73,7 +86,7 @@ void ui_temperatureComponent_show_keypad(int type, int index)
         lv_obj_t *bed = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTTEMPS_TEMPERATURECOMPONENTBED);
         lv_obj_t *nozzle = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTTEMPS_TEMPERATURECOMPONENTNOZZLE);
         ui_temperatureComponent_input_target = index == 0 ? bedInput : nozzleInput;
-        lv_obj_add_state(index == 0 ? nozzle : bed, LV_STATE_DISABLED);
+        lv_obj_add_flag(index == 0 ? nozzle : bed, LV_OBJ_FLAG_HIDDEN);
     }
     else
     {
@@ -92,18 +105,18 @@ void ui_temperatureComponent_show_keypad(int type, int index)
         {
         case 0:
             ui_temperatureComponent_input_target = partInput;
-            lv_obj_add_state(aux, LV_STATE_DISABLED);
-            lv_obj_add_state(chamber, LV_STATE_DISABLED);
+            lv_obj_add_flag(aux, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(chamber, LV_OBJ_FLAG_HIDDEN);
             break;
         case 1:
             ui_temperatureComponent_input_target = auxInput;
-            lv_obj_add_state(part, LV_STATE_DISABLED);
-            lv_obj_add_state(chamber, LV_STATE_DISABLED);
+            lv_obj_add_flag(part, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(chamber, LV_OBJ_FLAG_HIDDEN);
             break;
         case 2:
             ui_temperatureComponent_input_target = chamberInput;
-            lv_obj_add_state(part, LV_STATE_DISABLED);
-            lv_obj_add_state(aux, LV_STATE_DISABLED);
+            lv_obj_add_flag(part, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(aux, LV_OBJ_FLAG_HIDDEN);
             break;
         }
     }
@@ -200,7 +213,7 @@ void ui_event_comp_temperatureComponent_numpadKeyBack(lv_event_t *e)
             lv_textarea_set_cursor_pos(ui_temperatureComponent_input_target, LV_TEXTAREA_CURSOR_LAST);
             lv_textarea_del_char(ui_temperatureComponent_input_target);
         }
-        ui_temperatureComponent_show_backOrCancel();
+        update_back_key();
     }
 }
 void ui_event_comp_temperatureComponent_numpadKeyOk(lv_event_t *e)
@@ -287,7 +300,7 @@ void ui_temperatureComponent_onXtouchTempTarget(lv_event_t *e)
         inputTarget = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTTEMPS_TEMPERATURECOMPONENTNOZZLE_MAINSCREENNOZZLETEMPINPUT);
     }
 
-    char value[3];
+    char value[12];
     itoa(message->data, value, 10);
     lv_textarea_set_placeholder_text(inputTarget, value);
     lv_obj_set_style_text_color(inputTarget, message->data > 0 ? lv_color_hex(0xff682a) : lv_color_hex(0x777777), LV_PART_TEXTAREA_PLACEHOLDER | LV_STATE_DEFAULT);
@@ -299,7 +312,7 @@ void ui_temperatureComponent_onXtouchPartFanSpeed(lv_event_t *e)
     lv_msg_t *m = lv_event_get_msg(e);
 
     struct XTOUCH_MESSAGE_DATA *message = (struct XTOUCH_MESSAGE_DATA *)m->payload;
-    char value[3];
+    char value[12];
 
     itoa(round(message->data * 100 / 255.), value, 10);
     lv_textarea_set_text(target, value);
@@ -311,7 +324,7 @@ void ui_temperatureComponent_onXtouchAuxFanSpeed(lv_event_t *e)
     lv_msg_t *m = lv_event_get_msg(e);
 
     struct XTOUCH_MESSAGE_DATA *message = (struct XTOUCH_MESSAGE_DATA *)m->payload;
-    char value[3];
+    char value[12];
 
     itoa(round(message->data * 100 / 255.), value, 10);
     lv_textarea_set_text(target, value);
@@ -1090,6 +1103,11 @@ lv_obj_t *ui_temperatureComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_pad_bottom(cui_numpadKeyOk, 12, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_color(cui_numpadKeyOk, lv_color_hex(0x333333), LV_PART_MAIN | LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(cui_numpadKeyOk, 255, LV_PART_MAIN | LV_STATE_PRESSED);
+
+    lv_obj_set_style_bg_color(cui_numpadKeyBack, lv_color_hex(0xB83F45), 0);
+    lv_obj_set_style_bg_color(cui_numpadKeyBack, lv_color_hex(0x862C32), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_color(cui_numpadKeyOk, lv_color_hex(0x318A52), 0);
+    lv_obj_set_style_bg_color(cui_numpadKeyOk, lv_color_hex(0x23653C), LV_STATE_PRESSED);
 
     lv_obj_t **children = lv_mem_alloc(sizeof(lv_obj_t *) * _UI_COMP_TEMPERATURECOMPONENT_NUM);
     children[UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENT] = cui_temperatureComponent;

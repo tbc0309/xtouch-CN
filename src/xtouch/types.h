@@ -2,6 +2,10 @@
 #define _XLCD_TYPES
 
 #define XTOUCH_LCD_MIN_SLEEP_TIME 5
+/* Bounded standard four-slot AMS telemetry. New feeder types need distinct routing. */
+#define XTOUCH_MAX_AMS_UNITS 8
+#define XTOUCH_AMS_SLOTS_PER_UNIT 4
+#define XTOUCH_MAX_AMS_SLOTS (XTOUCH_MAX_AMS_UNITS * XTOUCH_AMS_SLOTS_PER_UNIT)
 
 #ifdef __cplusplus
 extern "C"
@@ -86,6 +90,7 @@ extern "C"
         double nozzle_temper;
         double nozzle_target_temper;
         double chamber_temper;
+        double chamber_target_temper;
         int wifi_signal;
         int cooling_fan_speed;
         int big_fan1_speed;
@@ -99,6 +104,23 @@ extern "C"
         bool has_ipcam;
         long int ams_exist_bits;
         bool ams;
+        // Fixed-size AMS snapshot. Missing delta fields keep their previous value.
+        // Optional telemetry uses validity masks: missing/unsupported is never 0%.
+        uint32_t ams_remain_valid;
+        uint8_t ams_remain_percent[XTOUCH_MAX_AMS_SLOTS];
+        uint8_t ams_humidity_valid;
+        uint8_t ams_humidity_percent[XTOUCH_MAX_AMS_UNITS];
+        uint8_t ams_temperature_valid;
+        int16_t ams_temperature_deci[XTOUCH_MAX_AMS_UNITS];
+        uint16_t ams_nozzle_min[XTOUCH_MAX_AMS_SLOTS];
+        uint16_t ams_nozzle_max[XTOUCH_MAX_AMS_SLOTS];
+        uint32_t external_color;
+        bool external_present;
+        uint16_t external_nozzle_min;
+        uint16_t external_nozzle_max;
+        uint32_t ams_tray_color[XTOUCH_MAX_AMS_SLOTS];
+        bool ams_tray_color_valid[XTOUCH_MAX_AMS_SLOTS];
+        char ams_tray_material[XTOUCH_MAX_AMS_SLOTS][12];
         int ams_status_sub;
         int ams_status_main;
         long int ams_version;

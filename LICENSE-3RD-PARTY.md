@@ -328,3 +328,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Noto fallback glyphs
+
+The generated `ui_font_noto_14.c` subset comes from [Noto Sans CJK](https://github.com/notofonts/noto-cjk). It supplies interface characters missing from Tencent W7. Noto is distributed under the SIL Open Font License 1.1; see [OFL-Noto.txt](resources/fonts/OFL-Noto.txt). Source font files are not included.
