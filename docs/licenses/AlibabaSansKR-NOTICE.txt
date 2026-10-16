@@ -1,0 +1,12 @@
+Alibaba Sans KR Medium
+Copyright © 2020-2022 Alibaba. All rights reserved.
+
+Official distribution: https://fonts.alibabagroup.com/
+Font file: https://fonts.alibabadesign.com/AlibabaSansKR/AlibabaSansKR-Medium/AlibabaSansKR-Medium.ttf
+Design information: https://en.sandoll.co.kr/AlibabaSansKR
+
+The firmware contains only the Hangul glyphs required by its UI, rasterized at
+14px from the original Medium font. Chinese and numerals remain Tencent W7.
+This is a generated bitmap subset, not the complete font or an independent font
+product. The font's copyright remains with its respective owner; it is not
+relicensed under the application's license or SIL OFL.

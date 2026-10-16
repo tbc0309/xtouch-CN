@@ -3,6 +3,7 @@
 #include "ui.h"
 #include "printer_picker.h"
 #include "printer_models.h"
+#include "source_icons.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -86,10 +87,12 @@ static void draw_rows(lv_event_t *e)
         lv_area_t row = {a.x1,y,a.x2,y+33};
         r.radius = 5; r.bg_color = lv_color_hex(active ? 0x777777 : 0x555555);
         lv_draw_rect(ctx, &r, &row);
+        uint8_t source=xtouch_printer_source(slots[i]);
+        lv_draw_img_dsc_t image;lv_draw_img_dsc_init(&image);image.recolor=lv_color_hex(xtouch_printer_source_color(slots[i]));image.recolor_opa=LV_OPA_COVER;lv_area_t bounds={row.x1+5,y+5,row.x1+28,y+28};lv_draw_img(ctx,&image,&bounds,source==0?&source_img_0:source==1?&source_img_1:&source_img_2);
         char formatted[100],name[100];
         snprintf(formatted,sizeof(formatted),"[%s] %s",ui_printer_model_short_name(xtouch_printer_model_at(slots[i])),xtouch_printer_name_at(slots[i]));
-        ellipsize(name,sizeof(name),formatted,180);
-        text(ctx, (lv_area_t){row.x1+10,y+8,row.x2-30,y+26}, name, 0xFFFFFF, false);
+        ellipsize(name,sizeof(name),formatted,155);
+        text(ctx, (lv_area_t){row.x1+34,y+8,row.x2-30,y+26}, name, xtouch_printer_source_color(slots[i]), false);
         lv_area_t dot = {row.x2-20,y+13,row.x2-13,y+20};
         r.radius = LV_RADIUS_CIRCLE; r.bg_color = lv_color_hex(active ? 0x74D34A : 0xAAAAAA);
         lv_draw_rect(ctx, &r, &dot);

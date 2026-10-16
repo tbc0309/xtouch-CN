@@ -1,4 +1,7 @@
 #include "xtouch/ota_request.h"
+#include "xtouch/portal.h"
+static void portal_manage_event(lv_event_t *e){(void)e;xtouch_portal_show_management();}
+static void portal_wifi_event(lv_event_t *e){(void)e;xtouch_portal_request_wifi();}
 #include <stdio.h>
 #include "../ui.h"
 #include "../ui_msgs.h"
@@ -186,7 +189,7 @@ lv_obj_t *ui_settingsComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_bg_color(languageList,lv_color_hex(0x333333),0);
     lv_obj_set_style_text_color(languageList,lv_color_white(),0);
     lv_obj_set_style_bg_color(languageList,lv_color_hex(0x555555),LV_PART_SELECTED|LV_STATE_CHECKED);
-    lv_dropdown_set_options(languageSelect, "简体中文\n繁體中文\nEnglish\nFrançais\nРусский\n日本語");
+    lv_dropdown_set_options(languageSelect, "简体中文\n繁體中文\nEnglish\nFrançais\nDeutsch\nРусский\n日本語\n한국어");
     lv_dropdown_set_selected(languageSelect, xtouch_language_get());
     lv_obj_add_event_cb(languageSelect, onLanguageChanged, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_t *cui_screenTitle;
@@ -656,6 +659,17 @@ lv_obj_t *ui_settingsComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_text_color(projectUrl, lv_color_hex(0x9DD9FF), 0);
     lv_label_set_long_mode(projectUrl, LV_LABEL_LONG_CLIP);
     lv_label_set_text(projectUrl, "github.com/tbc0309/xtouch-CN");
+
+    lv_obj_t *manageButton=lv_btn_create(cui_settingsComponent);
+    lv_obj_set_size(manageButton,LV_PCT(100),40);
+    lv_obj_t *manageLabel=lv_label_create(manageButton);
+    lv_label_set_text(manageLabel,xtouch_local("网页管理 / 扫码", "Web management / QR"));lv_obj_center(manageLabel);
+    lv_obj_add_event_cb(manageButton,portal_manage_event,LV_EVENT_CLICKED,NULL);
+    lv_obj_t *wifiButton=lv_btn_create(cui_settingsComponent);
+    lv_obj_set_size(wifiButton,LV_PCT(100),40);
+    lv_obj_t *wifiLabel=lv_label_create(wifiButton);
+    lv_label_set_text(wifiLabel,xtouch_local("Wi-Fi 配网 / 扫码", "Wi-Fi setup / QR"));lv_obj_center(wifiLabel);
+    lv_obj_add_event_cb(wifiButton,portal_wifi_event,LV_EVENT_CLICKED,NULL);
 
     lv_obj_t **children = lv_mem_alloc(sizeof(lv_obj_t *) * _UI_COMP_SETTINGSCOMPONENT_NUM);
     children[UI_COMP_SETTINGSCOMPONENT_SETTINGSCOMPONENT] = cui_settingsComponent;

@@ -17,6 +17,10 @@ def post_build_action(source, target, env):
     web = output / "webusb"
     ota.mkdir(parents=True, exist_ok=True)
     web.mkdir(parents=True, exist_ok=True)
+    if (build / "firmware.bin").stat().st_size > 0x1e0000:
+        raise RuntimeError("Application binary exceeds the OTA partition")
+    image_size = (build / "firmware.bin").stat().st_size
+    print(f"[SIZE] Application: {image_size} bytes; OTA free: {0x1e0000-image_size} bytes ({(0x1e0000-image_size)/1024:.1f} KiB)")
     app = ota / "xtouch-2.8.bin"
     shutil.copy2(build / "firmware.bin", app)
     image = app.read_bytes()

@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       name="description"
-      content="xtouch-CN 配置生成与在线刷写 · Configuration generator and web installer"
+      content="xtouch-CN 在线刷写 · Online firmware installer"
     />
     <meta name="referrer" content="no-referrer" />
-    <title>xtouch-CN · 配置与刷写</title>
+    <title>xtouch-CN · 在线刷写</title>
     <link rel="stylesheet" href="style.css" />
     <script type="module" src="app.js"></script>
   </head>
@@ -16,6 +16,7 @@
     <header class="top">
       <a class="brand" href="#">xtouch<span>-CN</span></a>
       <nav>
+        <a href="errors.html" data-i18n="errorLookup">故障码查询</a>
         <a
           href="https://github.com/tbc0309/xtouch-CN"
           target="_blank"
@@ -53,127 +54,8 @@
         </div>
         <p class="hero-intro" data-i18n="intro"></p>
       </section>
-      <ol class="steps">
-        <li><b>01</b><span data-i18n="step1"></span></li>
-        <li><b>02</b><span data-i18n="step2"></span></li>
-        <li><b>03</b><span data-i18n="step3"></span></li>
-      </ol>
-      <div class="tabs" role="tablist" aria-label="工具 / Tools">
-        <button
-          id="config-tab"
-          role="tab"
-          aria-controls="config-panel"
-          aria-selected="true"
-          data-i18n="configTab"
-        ></button
-        ><button
-          id="flash-tab"
-          role="tab"
-          aria-controls="flash-panel"
-          aria-selected="false"
-          data-i18n="flashTab"
-        ></button>
-      </div>
-      <section id="config-panel" role="tabpanel" aria-labelledby="config-tab">
-        <div class="section-heading">
-          <div>
-            <h2 data-i18n="configTitle"></h2>
-            <p data-i18n="privacy"></p>
-          </div>
-          <label class="button secondary file-button" role="button" tabindex="0"
-            ><span data-i18n="import"></span
-            ><input id="import" type="file" accept=".json,application/json"
-          /></label>
-        </div>
-        <form id="config-form" novalidate>
-          <section class="card">
-            <h3 data-i18n="wifi"></h3>
-            <div class="grid">
-              <label
-                ><span data-i18n="ssid"></span
-                ><input
-                  id="ssid"
-                  name="ssid"
-                  autocomplete="off"
-                  required /></label
-              ><label
-                ><span data-i18n="wifiPassword"></span
-                ><input
-                  id="pwd"
-                  name="pwd"
-                  type="password"
-                  autocomplete="off" /><small data-i18n="openWifi"></small
-              ></label>
-            </div>
-          </section>
-          <div class="section-heading compact">
-            <h3 data-i18n="printers"></h3>
-            <span id="count"></span>
-          </div>
-          <div id="printers"></div>
-          <button
-            type="button"
-            id="add"
-            class="button secondary"
-            data-i18n="add"
-          ></button>
-          <details class="card advanced">
-            <summary data-i18n="advanced"></summary>
-            <div class="grid">
-              <label
-                ><span data-i18n="timeout"></span
-                ><input
-                  id="timeout"
-                  type="number"
-                  min="0"
-                  max="30000"
-                  step="100"
-                  value="5000" /></label
-              ><label
-                ><span data-i18n="coldboot"></span
-                ><input
-                  id="coldboot"
-                  type="number"
-                  min="0"
-                  max="30000"
-                  step="100"
-                  value="5000"
-              /></label>
-            </div>
-            <p data-i18n="advancedHint"></p>
-          </details>
-          <div class="card export">
-            <div>
-              <h3 data-i18n="ready"></h3>
-              <p data-i18n="downloadHint"></p>
-            </div>
-            <div class="actions">
-              <button
-                type="button"
-                id="preview"
-                class="button secondary"
-                data-i18n="preview"
-              ></button
-              ><button
-                type="submit"
-                class="button primary"
-                data-i18n="download"
-              ></button>
-            </div>
-          </div>
-          <div id="message" role="status" aria-live="polite" hidden></div>
-          <details id="json-preview" class="card" hidden>
-            <summary data-i18n="jsonPreview"></summary>
-            <p data-i18n="masked"></p>
-            <pre id="json-output"></pre>
-          </details>
-        </form>
-      </section>
       <section
         id="flash-panel"
-        role="tabpanel"
-        aria-labelledby="flash-tab"
-        hidden
       >
         <div class="section-heading">
           <div>
@@ -203,26 +85,14 @@
             <p class="subtle" data-i18n="installerEnglish"></p>
           </section>
           <section class="card">
-            <span class="tag" data-i18n="sdTag"></span>
-            <h3 data-i18n="sdTitle"></h3>
-            <p class="red" data-i18n="sdSupport"></p>
-            <ol class="instructions">
-              <li data-i18n="sd1"></li>
-              <li data-i18n="sd2"></li>
-              <li data-i18n="sd3"></li>
-            </ol>
-            <a
-              id="app-download"
-              class="button secondary"
-              href="https://github.com/tbc0309/xtouch-CN/releases/latest"
-              data-i18n="downloadApp"
-            ></a>
-            <p class="subtle" data-i18n="sdNote"></p>
+            <span class="tag">Wi-Fi</span><h3 data-i18n="setupTitle"></h3>
+            <ol class="instructions"><li data-i18n="setup1"></li><li data-i18n="setup2"></li><li data-i18n="setup3"></li><li data-i18n="setup4"></li></ol>
           </section>
         </div>
         <p class="footnote" data-i18n="otaHint"></p>
       </section>
       <footer>
+        <p><a href="legacy.html" data-i18n="legacyConfig">旧版配置生成（仅适用于 v0.9.215）</a></p>
         <p data-i18n="boardHint"></p>
         <div>
           <a

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      name="description"
+      content="xtouch-CN 配置生成与在线刷写 · Configuration generator and web installer"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <title>xtouch-CN · 配置与刷写</title>
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="legacy.js"></script>
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="./">xtouch<span>-CN</span></a>
+      <nav>
+        <a href="errors.html" data-i18n="errorLookup">故障码查询</a>
+        <a
+          href="https://github.com/tbc0309/xtouch-CN"
+          target="_blank"
+          rel="noopener"
+          class="github-link"
+          aria-label="GitHub 项目地址"
+          title="GitHub"
+          ><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M12 0C5.37 0 0 5.373 0 12c0 5.302 3.438 9.8 8.205 11.387.6.113.82-.258.82-.577v-2.234c-3.338.726-4.043-1.416-4.043-1.416-.546-1.386-1.333-1.755-1.333-1.755-1.09-.745.083-.73.083-.73 1.205.085 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.108-.775.418-1.305.762-1.605-2.665-.303-5.467-1.334-5.467-5.932 0-1.31.469-2.381 1.236-3.221-.124-.303-.536-1.524.117-3.176 0 0 1.008-.323 3.301 1.23A11.5 11.5 0 0 1 12 5.804c1.02.005 2.045.138 3.003.404 2.291-1.553 3.297-1.23 3.297-1.23.655 1.652.243 2.873.12 3.176.77.84 1.235 1.911 1.235 3.221 0 4.61-2.807 5.625-5.479 5.922.43.372.823 1.102.823 2.222v3.291c0 .322.216.694.825.576C20.565 21.795 24 17.3 24 12 24 5.373 18.627 0 12 0Z"
+            /></svg
+          ><span data-i18n="projectLink">项目地址</span></a
+        ><select id="language" aria-label="语言 / Language">
+          <option value="zh">简体中文</option>
+          <option value="en">English</option>
+        </select>
+      </nav>
+    </header>
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow" data-i18n="eyebrow"></p>
+          <h1 data-i18n="title"></h1>
+          <div class="pills">
+            <span>ESP32-2432S028R</span><span>ILI9341 + XPT2046</span
+            ><span id="version">SD / LAN</span>
+          </div>
+        </div>
+        <div class="screen-demo" aria-hidden="true">
+          <div class="demo-bar"><b>xtouch-CN</b><span>●</span></div>
+          <div class="demo-model">P1S</div>
+          <div class="demo-stats"><span>28°C</span><span>24°C</span></div>
+          <div class="demo-colors"><i></i><i></i><i></i><i></i></div>
+        </div>
+        <p class="hero-intro" data-i18n="intro"></p>
+      </section>
+<section id="config-panel">
+        <div class="section-heading">
+          <div>
+            <h2 data-i18n="configTitle"></h2>
+            <p data-i18n="privacy"></p>
+          </div>
+          <label class="button secondary file-button" role="button" tabindex="0"
+            ><span data-i18n="import"></span
+            ><input id="import" type="file" accept=".json,application/json"
+          /></label>
+        </div>
+        <form id="config-form" novalidate>
+          <section class="card">
+            <h3 data-i18n="wifi"></h3>
+            <div class="grid">
+              <label
+                ><span data-i18n="ssid"></span
+                ><input
+                  id="ssid"
+                  name="ssid"
+                  autocomplete="off"
+                  required /></label
+              ><label
+                ><span data-i18n="wifiPassword"></span
+                ><input
+                  id="pwd"
+                  name="pwd"
+                  type="password"
+                  autocomplete="off" /><small data-i18n="openWifi"></small
+              ></label>
+            </div>
+          </section>
+          <div class="section-heading compact">
+            <h3 data-i18n="printers"></h3>
+            <span id="count"></span>
+          </div>
+          <div id="printers"></div>
+          <button
+            type="button"
+            id="add"
+            class="button secondary"
+            data-i18n="add"
+          ></button>
+          <details class="card advanced">
+            <summary data-i18n="advanced"></summary>
+            <div class="grid">
+              <label
+                ><span data-i18n="timeout"></span
+                ><input
+                  id="timeout"
+                  type="number"
+                  min="0"
+                  max="30000"
+                  step="100"
+                  value="5000" /></label
+              ><label
+                ><span data-i18n="coldboot"></span
+                ><input
+                  id="coldboot"
+                  type="number"
+                  min="0"
+                  max="30000"
+                  step="100"
+                  value="5000"
+              /></label>
+            </div>
+            <p data-i18n="advancedHint"></p>
+          </details>
+          <div class="card export">
+            <div>
+              <h3 data-i18n="ready"></h3>
+              <p data-i18n="downloadHint"></p>
+            </div>
+            <div class="actions">
+              <button
+                type="button"
+                id="preview"
+                class="button secondary"
+                data-i18n="preview"
+              ></button
+              ><button
+                type="submit"
+                class="button primary"
+                data-i18n="download"
+              ></button>
+            </div>
+          </div>
+          <div id="message" role="status" aria-live="polite" hidden></div>
+          <details id="json-preview" class="card" hidden>
+            <summary data-i18n="jsonPreview"></summary>
+            <p data-i18n="masked"></p>
+            <pre id="json-output"></pre>
+          </details>
+        </form>
+      </section>
+      <footer>
+        <p data-i18n="boardHint"></p>
+        <div>
+          <a
+            id="guide"
+            href="https://github.com/tbc0309/xtouch-CN#readme"
+            data-i18n="guide"
+          ></a
+          ><a
+            href="https://imnks.com/12504.html"
+            target="_blank"
+            rel="noopener"
+            data-i18n="blog"
+          ></a
+          ><a
+            href="https://github.com/tbc0309/xtouch-CN/releases"
+            target="_blank"
+            rel="noopener"
+            >Releases ↗</a
+          >
+        </div>
+        <p data-i18n="unofficial"></p>
+      </footer>
+    </main>
+  </body>
+</html>

@@ -39,6 +39,7 @@ extern "C"
     void onControlHome(lv_event_t *e);
     void onControlDown(lv_event_t *e);
     void onControlAxis(lv_event_t *e);
+    bool ui_manual_motion_allowed(void);
     void onControlRight(lv_event_t *e);
 
     /* Settings */

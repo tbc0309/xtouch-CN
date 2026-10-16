@@ -1,9 +1,14 @@
 #ifndef _XLCD_TYPES
 #define _XLCD_TYPES
+#include <stdbool.h>
 
 #define XTOUCH_LCD_MIN_SLEEP_TIME 5
-/* Bounded standard four-slot AMS telemetry. New feeder types need distinct routing. */
-#define XTOUCH_MAX_AMS_UNITS 8
+/* Four four-slot units plus eight one-slot HT units; protocol IDs stay separate. */
+#define XTOUCH_STANDARD_AMS_UNITS 4
+#define XTOUCH_HT_AMS_UNITS 8
+#define XTOUCH_STANDARD_AMS_SLOTS (XTOUCH_STANDARD_AMS_UNITS * 4)
+#define XTOUCH_MIXED_AMS_UNIT (XTOUCH_STANDARD_AMS_UNITS + XTOUCH_HT_AMS_UNITS)
+#define XTOUCH_MAX_AMS_UNITS (XTOUCH_MIXED_AMS_UNIT + 1)
 #define XTOUCH_AMS_SLOTS_PER_UNIT 4
 #define XTOUCH_MAX_AMS_SLOTS (XTOUCH_MAX_AMS_UNITS * XTOUCH_AMS_SLOTS_PER_UNIT)
 
@@ -84,6 +89,9 @@ extern "C"
         char gcode_file[128];
         int plate_index;
         char task_id[32];
+        unsigned char temperature_valid,fan_valid,fan_support_known,fan_supported;
+        bool chamber_support_known,chamber_supported,chamber_edit_known,chamber_edit_supported,fan_new_protocol;
+        unsigned char chamber_edit_min,chamber_edit_max;
         double bed_temper;
         double bed_target_temper;
         double frame_temp;
@@ -91,6 +99,7 @@ extern "C"
         double nozzle_target_temper;
         double chamber_temper;
         double chamber_target_temper;
+        bool chamber_valid, chamber_target_valid;
         int wifi_signal;
         int cooling_fan_speed;
         int big_fan1_speed;
@@ -106,21 +115,39 @@ extern "C"
         bool ams;
         // Fixed-size AMS snapshot. Missing delta fields keep their previous value.
         // Optional telemetry uses validity masks: missing/unsupported is never 0%.
-        uint32_t ams_remain_valid;
+        uint64_t ams_remain_valid;
         uint8_t ams_remain_percent[XTOUCH_MAX_AMS_SLOTS];
-        uint8_t ams_humidity_valid;
+        uint16_t ams_humidity_valid;
         uint8_t ams_humidity_percent[XTOUCH_MAX_AMS_UNITS];
-        uint8_t ams_temperature_valid;
+        uint16_t ams_temperature_valid;
         int16_t ams_temperature_deci[XTOUCH_MAX_AMS_UNITS];
         uint16_t ams_nozzle_min[XTOUCH_MAX_AMS_SLOTS];
         uint16_t ams_nozzle_max[XTOUCH_MAX_AMS_SLOTS];
         uint32_t external_color;
-        bool external_present;
+        bool external_present, external_multi_protocol;
+        uint8_t external_routes, external_materials;
+        uint32_t external_color2;
+        uint16_t external_nozzle_min2, external_nozzle_max2;
         uint16_t external_nozzle_min;
         uint16_t external_nozzle_max;
         uint32_t ams_tray_color[XTOUCH_MAX_AMS_SLOTS];
         bool ams_tray_color_valid[XTOUCH_MAX_AMS_SLOTS];
         char ams_tray_material[XTOUCH_MAX_AMS_SLOTS][12];
+        uint8_t ams_kind[XTOUCH_MAX_AMS_UNITS]; // 0 unknown, 1 AMS, 2 Lite, 3 Pro, 4 HT
+        uint8_t ams_dry_status[XTOUCH_MAX_AMS_UNITS];
+        uint8_t ams_bound_extruder[XTOUCH_MAX_AMS_UNITS];
+        uint16_t ams_dry_valid;
+        uint16_t ams_dry_minutes[XTOUCH_MAX_AMS_UNITS];
+        uint8_t ams_dry_target[XTOUCH_MAX_AMS_UNITS];
+        uint8_t ams_dry_hours[XTOUCH_MAX_AMS_UNITS];
+        uint8_t nozzle_valid, nozzle_count, active_nozzle, nozzle_loaded_valid;
+        bool extruder_busy, rack_present, non_fdm_mode;
+        uint8_t rack_status, rack_position, rack_reading, mixed_ams_protocol_id;
+        uint16_t rack_mask;
+        uint8_t rack_diameter[16];
+        char rack_type[16][16];
+        uint16_t nozzle_actual[2], nozzle_target[2];
+        int16_t nozzle_loaded[2];
         int ams_status_sub;
         int ams_status_main;
         long int ams_version;
@@ -133,14 +160,14 @@ extern "C"
         bool ams_calibrate_remain_flag;
         bool ams_support_virtual_tray;
         bool is_ams_need_update;
-        long tray_exist_bits;
-        long tray_is_bbl_bits;
-        long tray_read_done_bits;
-        long tray_reading_bits;
-        int m_ams_id;   // local ams  : "0" ~ "3"
+        uint64_t tray_exist_bits;
+        uint64_t tray_is_bbl_bits;
+        uint64_t tray_read_done_bits;
+        uint64_t tray_reading_bits;
+        int m_ams_id;   // Dense UI unit index; translate before sending commands.
         int m_tray_id;  // local tray id : "0" ~ "3"
-        int m_tray_now; // tray_now : "0" ~ "15" or "254", "255"
-        int m_tray_tar; // tray_tar : "0" ~ "15" or "255"
+        int m_tray_now; // Dense UI slot, external 254, empty 255, unknown -1.
+        int m_tray_tar; // Same normalized slot representation.
 
     } XTouchBambuStatus;
 
@@ -183,49 +210,6 @@ extern "C"
     } XTouchConfig;
 
     XTouchConfig xTouchConfig;
-
-    /* HMS */
-
-    enum ModuleID
-    {
-        MODULE_UKNOWN = 0x00,
-        MODULE_01 = 0x01,
-        MODULE_02 = 0x02,
-        MODULE_MC = 0x03,
-        MODULE_04 = 0x04,
-        MODULE_MAINBOARD = 0x05,
-        MODULE_06 = 0x06,
-        MODULE_AMS = 0x07,
-        MODULE_TH = 0x08,
-        MODULE_09 = 0x09,
-        MODULE_10 = 0x0A,
-        MODULE_11 = 0x0B,
-        MODULE_XCAM = 0x0C,
-        MODULE_13 = 0x0D,
-        MODULE_14 = 0x0E,
-        MODULE_15 = 0x0F,
-        MODULE_MAX = 0x10
-    };
-
-    enum HMSMessageLevel
-    {
-        HMS_UNKNOWN = 0,
-        HMS_FATAL = 1,
-        HMS_SERIOUS = 2,
-        HMS_COMMON = 3,
-        HMS_INFO = 4,
-        HMS_MSG_LEVEL_MAX,
-    };
-
-    typedef struct
-    {
-        int module_id;
-        unsigned module_num;
-        unsigned part_id;
-        unsigned reserved;
-        int msg_level;
-        int msg_code;
-    } HMSItem;
 
     typedef struct
     {

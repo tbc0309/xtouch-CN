@@ -82,7 +82,7 @@
 #define XTOUCH_TEXT_FILAMENT_LOAD_CONFIRM_EN "Load %s?\nMay heat and move the toolhead"
 #define XTOUCH_TEXT_FILAMENT_UNLOAD_CONFIRM_EN "Unload %s?\nRetract the currently loaded spool"
 #define XTOUCH_TEXT_FILAMENT_SET_TEMP_EN "Set temp"
-#define XTOUCH_TEXT_FILAMENT_AUTH_ERROR_EN "Printer rejected control\nEnable LAN-only + Dev mode\nError 84033543"
-#define XTOUCH_TEXT_FILAMENT_ERROR_EN "Filament operation rejected\nError %u"
+#define XTOUCH_TEXT_CONTROL_AUTH_ERROR_EN "Error 84033543\nTry LAN-only + Dev mode"
+#define XTOUCH_TEXT_CONTROL_ERROR_EN "Command rejected\nError %u"
 
 #define XTOUCH_TEXT_UP_TO_DATE_EN "Already up to date"

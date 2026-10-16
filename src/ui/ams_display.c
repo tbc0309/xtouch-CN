@@ -1,13 +1,15 @@
 #include "ams_display.h"
 #include "filament_actions.h"
+#include "xtouch/ams_units.h"
+#include "ams_details.h"
 #include <stdio.h>
 
 unsigned ui_ams_base(void)
 {
     int id = bambuStatus.m_ams_id;
-    if (id < 0 || id >= XTOUCH_MAX_AMS_UNITS || !(bambuStatus.ams_exist_bits & (1UL << id))) {
+    if (id < 0 || id >= XTOUCH_MAX_AMS_UNITS || !(bambuStatus.ams_exist_bits & (1ULL << id))) {
         id = 0;
-        for (int i = 0; i < XTOUCH_MAX_AMS_UNITS; ++i) if (bambuStatus.ams_exist_bits & (1UL << i)) { id = i; break; }
+        for (int i = 0; i < XTOUCH_MAX_AMS_UNITS; ++i) if (bambuStatus.ams_exist_bits & (1ULL << i)) { id = i; break; }
     }
     return (unsigned)id * 4;
 }
@@ -27,8 +29,8 @@ uint32_t ui_ams_remaining_color(unsigned percent)
 
 static uint32_t slot_border(unsigned slot)
 {
-    if (bambuStatus.ams && (bambuStatus.tray_reading_bits & (1UL << slot))) return 0xFFB300;
-    if (bambuStatus.ams && bambuStatus.m_tray_now == (int)slot) return 0x74D34A;
+    if (bambuStatus.ams && (bambuStatus.tray_reading_bits & (1ULL << slot))) return 0xFFB300;
+    if (bambuStatus.ams && ui_filament_is_loaded((int)slot)) return 0x74D34A;
     return 0xAAAAAA; // Visible outline also makes black and white filament distinguishable.
 }
 
@@ -46,21 +48,25 @@ static void refresh_strip(lv_obj_t *strip)
     lv_obj_set_user_data(strip,(void *)(uintptr_t)unit);
     for(unsigned i=0;i<4;++i){
         lv_obj_t *o=lv_obj_get_child(strip,i+1);
+        if(i>=xtouch_ams_slot_count(unit)){lv_obj_add_flag(o,LV_OBJ_FLAG_HIDDEN);continue;}else lv_obj_clear_flag(o,LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_bg_color(o,lv_color_hex(ui_ams_slot_color(base+i)),0);
         lv_obj_set_style_border_color(o,lv_color_hex(slot_border(base+i)),0);
-        lv_obj_set_style_border_width(o,bambuStatus.ams && (bambuStatus.m_tray_now==(int)(base+i) || (bambuStatus.tray_reading_bits&(1UL<<(base+i))))?2:1,0);
+        lv_obj_set_style_border_width(o,bambuStatus.ams && (ui_filament_is_loaded((int)(base+i)) || (bambuStatus.tray_reading_bits&(1ULL<<(base+i))))?2:1,0);
     }
-    char name[2]={(char)('A'+unit),0};lv_label_set_text(lv_obj_get_child(strip,0),name);
+    char name[8];xtouch_ams_unit_label(unit,name,sizeof(name));lv_label_set_text(lv_obj_get_child(strip,0),name);
     unsigned units=0;for(unsigned i=0;i<XTOUCH_MAX_AMS_UNITS;++i)units+=(bambuStatus.ams_exist_bits>>i)&1U;
     bool numbered=units>1;
     if(numbered)lv_obj_clear_flag(lv_obj_get_child(strip,0),LV_OBJ_FLAG_HIDDEN);else lv_obj_add_flag(lv_obj_get_child(strip,0),LV_OBJ_FLAG_HIDDEN);
     bool external=bambuStatus.external_present;
+    bool dualExternal=bambuStatus.nozzle_count==2&&bambuStatus.external_multi_protocol&&(bambuStatus.external_materials&3)==3;
     for(unsigned i=5;i<7;++i){
         lv_obj_t *o=lv_obj_get_child(strip,i);
         if(external)lv_obj_clear_flag(o,LV_OBJ_FLAG_HIDDEN);else lv_obj_add_flag(o,LV_OBJ_FLAG_HIDDEN);
     }
-    lv_obj_set_style_bg_color(lv_obj_get_child(strip,6),lv_color_hex(bambuStatus.external_color),0);
-    lv_obj_set_width(strip,70+(numbered?14:0)+(external?28:0));
+    lv_obj_set_style_bg_color(lv_obj_get_child(strip,6),lv_color_hex(bambuStatus.external_multi_protocol&&bambuStatus.external_materials==2?bambuStatus.external_color2:bambuStatus.external_color),0);
+    if(dualExternal)lv_obj_clear_flag(lv_obj_get_child(strip,7),LV_OBJ_FLAG_HIDDEN);else lv_obj_add_flag(lv_obj_get_child(strip,7),LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_bg_color(lv_obj_get_child(strip,7),lv_color_hex(bambuStatus.external_color2),0);
+    lv_obj_set_width(strip, LV_SIZE_CONTENT);
 }
 static void strip_message(lv_event_t *e){refresh_strip(lv_event_get_target(e));}
 static void cycle_strip(lv_event_t *e)
@@ -72,13 +78,19 @@ static void cycle_strip(lv_event_t *e)
 }
 void ui_ams_strip_bind(lv_obj_t *strip)
 {
+    /* The label's 19px line box must fit too. A 16px flex line clips the
+       centered 16px swatches when an AMS model label becomes visible. */
+    lv_obj_set_height(strip, 22);
     lv_obj_set_user_data(strip,NULL);
-    lv_obj_t *name=lv_label_create(strip);lv_obj_set_width(name,12);lv_obj_move_to_index(name,0);
+    lv_obj_t *name=lv_label_create(strip);lv_obj_set_width(name,LV_SIZE_CONTENT);lv_obj_set_flex_grow(name,0);lv_obj_move_to_index(name,0);
     lv_obj_t *separator=lv_label_create(strip);lv_label_set_text(separator,"|");lv_obj_set_width(separator,8);
     lv_obj_t *external=lv_obj_create(strip);lv_obj_remove_style_all(external);lv_obj_set_size(external,16,16);
     lv_obj_set_style_bg_opa(external,LV_OPA_COVER,0);lv_obj_set_style_radius(external,3,0);
     lv_obj_set_style_border_width(external,1,0);lv_obj_set_style_border_color(external,lv_color_hex(0xAAAAAA),0);
     lv_obj_clear_flag(external,LV_OBJ_FLAG_CLICKABLE|LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *second=lv_obj_create(strip);lv_obj_remove_style_all(second);lv_obj_set_size(second,16,16);lv_obj_set_style_bg_opa(second,LV_OPA_COVER,0);lv_obj_set_style_radius(second,3,0);lv_obj_set_style_border_width(second,1,0);lv_obj_set_style_border_color(second,lv_color_hex(0xAAAAAA),0);lv_obj_clear_flag(second,LV_OBJ_FLAG_CLICKABLE|LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_column(strip,2,0);
+    lv_obj_set_flex_align(strip,LV_FLEX_ALIGN_START,LV_FLEX_ALIGN_CENTER,LV_FLEX_ALIGN_CENTER);
     refresh_strip(strip);
     lv_obj_add_event_cb(strip,strip_message,LV_EVENT_MSG_RECEIVED,NULL);
     lv_msg_subsribe_obj(XTOUCH_ON_AMS,strip,NULL);lv_msg_subsribe_obj(XTOUCH_ON_AMS_BITS,strip,NULL);
@@ -106,7 +118,10 @@ bool ui_ams_select_unit(unsigned unit)
     return true;
 }
 
-enum { AMS_HEADER_WIDTH=200, AMS_TAB_MIN_WIDTH=50 };
+unsigned ui_ams_selected_unit(void){return panel_base()/4;}
+bool ui_ams_drying_available(void){if(ui_filament_selected()>=253)return false;unsigned unit=ui_ams_selected_unit();return (bambuStatus.ams_exist_bits&(1U<<unit))&&(bambuStatus.ams_kind[unit]==3||bambuStatus.ams_kind[unit]==4);}
+enum { AMS_HEADER_WIDTH=176, AMS_TAB_MIN_WIDTH=50 };
+static int header_width(void){return bambuStatus.external_present?AMS_HEADER_WIDTH:264;}
 static unsigned panel_units(unsigned units[XTOUCH_MAX_AMS_UNITS])
 {
     unsigned count=0;
@@ -115,7 +130,8 @@ static unsigned panel_units(unsigned units[XTOUCH_MAX_AMS_UNITS])
 }
 static int header_content_width(unsigned count)
 {
-    return count>4 ? (int)count*AMS_TAB_MIN_WIDTH : AMS_HEADER_WIDTH;
+    int width=header_width();
+    return count>4 && (int)count*AMS_TAB_MIN_WIDTH>width ? (int)count*AMS_TAB_MIN_WIDTH : width;
 }
 /* A single opening nudge is an animation of scrolling, not a feeder selection.
    LVGL owns its lifetime; deleting the page removes animations for the viewport. */
@@ -137,6 +153,7 @@ static void header_sync(lv_obj_t *panel)
 {
     unsigned units[XTOUCH_MAX_AMS_UNITS], count=panel_units(units);
     lv_obj_t *viewport=lv_obj_get_child(panel,0);
+    lv_obj_set_width(viewport,header_width());
     lv_obj_set_width(lv_obj_get_child(viewport,0),header_content_width(count));
     header_hint(viewport,count);
     lv_obj_invalidate(viewport);
@@ -150,18 +167,21 @@ static void panel_click(lv_event_t *e)
     lv_obj_t *o = lv_event_get_target(e); lv_area_t area; lv_obj_get_content_coords(o, &area);
     if (point.x < area.x1 || point.x > area.x2 || point.y < area.y1 || point.y > area.y2) return;
     if (point.y <= area.y1+22) {
-        if (point.x >= area.x1+AMS_HEADER_WIDTH) ui_filament_select(254);
+        if(point.x>=area.x1+176 && bambuStatus.external_present)ui_filament_select(bambuStatus.nozzle_count==2&&bambuStatus.external_multi_protocol&&point.x>=area.x1+220?253:254);
         else return; /* The independent AMS scroll viewport handles this area. */
     } else if (point.y >= area.y1+26 && ui_filament_selected()!=254) {
-        int width=(lv_area_get_width(&area)-12)/4;
+        int width=xtouch_ams_slot_count(panel_base()/4)==1?lv_area_get_width(&area):(lv_area_get_width(&area)-12)/4;
         int x=point.x-area.x1, index=x/(width+4);
         if (index>3 || x%(width+4)>=width) return;
+        if((unsigned)index>=xtouch_ams_slot_count(panel_base()/4))return;
         int tray=panel_base()+index;
         ui_filament_select(ui_filament_selected()==tray ? -1 : tray);
     }
     ui_filament_refresh(lv_obj_get_parent(o));
     lv_obj_invalidate(o);
 }
+
+static void details_event(lv_event_t *e){ui_ams_details_show(panel_base()/4);}
 
 static void panel_message(lv_event_t *e) { lv_obj_t *panel=lv_event_get_target(e); header_sync(panel); lv_obj_invalidate(panel); }
 
@@ -183,16 +203,16 @@ static void draw_header(lv_event_t *e)
         unsigned id=units[index];
         lv_area_t tab={a.x1+(int)index*lv_area_get_width(&a)/(int)count,a.y1,
             a.x1+(int)(index+1)*lv_area_get_width(&a)/(int)count-3,a.y1+21};
-        bool active=selection!=254 && base/4==id;
+        bool active=selection<253 && base/4==id;
         lv_draw_rect_dsc_t r;lv_draw_rect_dsc_init(&r);
         r.bg_color=lv_color_hex(active ? 0x777777 : 0x555555);r.bg_opa=LV_OPA_COVER;r.radius=4;
         lv_draw_rect(ctx,&r,&tab);
-        char heading[48];snprintf(heading,sizeof(heading),"AMS %c",'A'+id);
+        char heading[48],unitName[8];xtouch_ams_unit_label(id,unitName,sizeof(unitName));snprintf(heading,sizeof(heading),"%s",unitName);
         if (count==1) {
             size_t n=strlen(heading);
             if (bambuStatus.ams_humidity_valid & (1U<<id))
                 n+=snprintf(heading+n,sizeof(heading)-n," %u%%",bambuStatus.ams_humidity_percent[id]);
-            if (bambuStatus.ams_temperature_valid & (1U<<id))
+            else if (bambuStatus.ams_temperature_valid & (1U<<id))
                 snprintf(heading+n,sizeof(heading)-n," %.1fC",bambuStatus.ams_temperature_deci[id]/10.0);
         }
         tab.y1+=3;draw_text(ctx,tab,heading,active ? 0xFFFFFF : 0xBBBBBB);
@@ -218,20 +238,24 @@ static void draw_panel(lv_event_t *e)
     unsigned base = panel_base();
     int selection = ui_filament_selected();
     /* External remains stationary, outside the horizontal AMS viewport. */
-    lv_area_t external={a.x1+AMS_HEADER_WIDTH,a.y1,a.x2,a.y1+21};
+    lv_area_t external={a.x1+176,a.y1,a.x2,a.y1+21};
     lv_draw_rect_dsc_t tab; lv_draw_rect_dsc_init(&tab);
-    tab.bg_color=lv_color_hex(selection==254 ? 0x777777 : 0x555555);
+    tab.bg_color=lv_color_hex(selection>=253 ? 0x777777 : 0x555555);
     tab.bg_opa=LV_OPA_COVER; tab.radius=4;
-    lv_draw_rect(ctx,&tab,&external);
+    if(bambuStatus.external_present)lv_draw_rect(ctx,&tab,&external);
     external.y1+=3;
-    draw_text(ctx,external,XTOUCH_TEXT_FILAMENT_EXTERNAL,selection==254 ? 0xFFFFFF : 0xBBBBBB);
-    if (selection == 254 || !bambuStatus.ams_exist_bits) {
+    if(!bambuStatus.external_present) { /* No configured external material. */ }
+    else if(bambuStatus.nozzle_count==2&&bambuStatus.external_multi_protocol){
+        for(unsigned n=0;n<2;n++){if(!(bambuStatus.external_materials&(1U<<n)))continue;lv_area_t cell=external;cell.x1=a.x1+176+n*44;cell.x2=cell.x1+42;char caption[8];snprintf(caption,sizeof(caption),"EXT%u",n);draw_text(ctx,cell,caption,selection==(n?253:254)?0x39A1FD:0xBBBBBB);}
+    }else draw_text(ctx,external,XTOUCH_TEXT_FILAMENT_EXTERNAL,selection>=253?0xFFFFFF:0xBBBBBB);
+    if (selection >= 253 || !bambuStatus.ams_exist_bits) {
         draw_text(ctx,(lv_area_t){a.x1,a.y1+31,a.x2,a.y2},
-            selection == 254 ? XTOUCH_TEXT_FILAMENT_EXTERNAL_HELP : XTOUCH_TEXT_FILAMENT_PICK,0xCCCCCC);
+            selection >= 253 ? XTOUCH_TEXT_FILAMENT_EXTERNAL_HELP : XTOUCH_TEXT_FILAMENT_PICK,0xCCCCCC);
         return;
     }
-    int width = (lv_area_get_width(&a) - 12) / 4;
-    for (unsigned i = 0; i < 4; ++i) {
+    unsigned slots=xtouch_ams_slot_count(base/4);
+    int width = slots==1?lv_area_get_width(&a):(lv_area_get_width(&a) - 12) / 4;
+    for (unsigned i = 0; i < xtouch_ams_slot_count(base/4); ++i) {
         unsigned slot = base + i;
         lv_area_t card = {a.x1 + (int)i * (width + 4), a.y1 + 26,
                          a.x1 + (int)i * (width + 4) + width - 1, a.y2};
@@ -246,11 +270,13 @@ static void draw_panel(lv_event_t *e)
         r.border_color = lv_color_hex(slot_border(slot)); r.radius = 2;
         lv_draw_rect(ctx, &r, &swatch);
         char text[80], remaining[24] = "";
-        if (bambuStatus.ams_remain_valid & (1U << slot))
+        if (bambuStatus.ams_remain_valid & (1ULL << slot))
             snprintf(remaining,sizeof(remaining)," #%06x %u%%#", (unsigned)ui_ams_remaining_color(bambuStatus.ams_remain_percent[slot]), bambuStatus.ams_remain_percent[slot]);
-        snprintf(text, sizeof(text), "#91C7E5 %c%u#%s\n%s", 'A' + base / 4, i + 1, remaining,
-                 bambuStatus.ams && bambuStatus.ams_tray_material[slot][0]
-                 ? bambuStatus.ams_tray_material[slot] : "--");
+        char source[20];
+        if(base/4==XTOUCH_MIXED_AMS_UNIT)snprintf(source,sizeof(source),"L%u",i+1);
+        else if(base/4<4)snprintf(source,sizeof(source),"%c%u",'A'+base/4,i+1);
+        else snprintf(source,sizeof(source),"HT-%u",base/4-3);
+        snprintf(text,sizeof(text),"#91C7E5 %s#%s\n%s",source,remaining,bambuStatus.ams&&bambuStatus.ams_tray_material[slot][0]?bambuStatus.ams_tray_material[slot]:"--");
         lv_area_t caption = {card.x1 + 3, card.y1 + 17, card.x2 - 3, card.y2 - 3};
         lv_draw_label_dsc_t caption_style; lv_draw_label_dsc_init(&caption_style);
         caption_style.font = LV_FONT_DEFAULT;
@@ -327,6 +353,7 @@ void ui_ams_filament_layout(lv_obj_t *component)
     lv_obj_add_event_cb(content,stop_hint,LV_EVENT_PRESSED,viewport);
     lv_obj_add_event_cb(content,draw_header,LV_EVENT_DRAW_MAIN_END,NULL);
     lv_obj_add_event_cb(content,header_click,LV_EVENT_SHORT_CLICKED,panel);
+    lv_obj_add_event_cb(content,details_event,LV_EVENT_LONG_PRESSED,NULL);
     header_sync(panel);
     lv_obj_add_event_cb(panel, panel_click, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(panel, draw_panel, LV_EVENT_DRAW_MAIN_END, NULL);

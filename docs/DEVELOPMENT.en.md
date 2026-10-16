@@ -9,19 +9,19 @@ The environment is `esp32dev`. The application is `.pio/build/esp32dev/firmware.
 ## Code structure
 
 - `src/ui/`: LVGL screens, components, and interactions. `ui_loaders.c` handles navigation and switching notices.
-- `src/ui/i18n/`: six independent language headers. `strings.c` provides shared translation lookup; application code uses `XTOUCH_TEXT_*`.
+- `src/ui/i18n/`: Eight language headers. `strings.c` provides shared translation lookup; application code uses `XTOUCH_TEXT_*`.
 - `src/xtouch/config.h`, `printers.h`: configuration parsing for up to 100 `printers` entries and legacy single-printer `mqtt` input.
 - `src/xtouch/mqtt.h`: one active printer connection, state cleanup on switching, and reconnect backoff.
 - `src/xtouch/storage.h/.cpp`: atomic internal SPIFFS writes, SD synchronization, timestamp/revision conflict resolution, and deletion markers. Other modules access persistent configuration through this API.
-- `src/xtouch/settings.h`: persistent settings; language values are `zh`, `zh-TW`, `en`, `fr`, `ru`, and `ja`.
+- `src/xtouch/settings.h`: persistent settings; language values are `zh`, `zh-TW`, `en`, `fr`, `de`, `ru`, `ja`, `ko`.
 - `src/xtouch/firmware.h`, `net.h`, `ota-certs.h`: version comparison, HTTPS downloads, verification, and installation.
 - `resources/User_Setup.h`: hardware and display configuration. `resources/lv_conf.h`: global fonts and LVGL memory settings.
 
 ## Fonts and event lifecycle
 
-Interface text uses W7 14px; large numbers use W7 28px. Icons use dedicated upstream fonts. Grayscale subsets cover static interface text in all six languages, rather than arbitrary external job or printer names.
+Embedded subsets cover static interface text, rather than arbitrary external job names.
 
-Add new strings to all six language headers and `strings.h/.c`. Regenerate fonts using the instructions below, then run `python scripts/check_localization.py`. The original TTF is not distributed. Traditional Chinese strings are maintained independently and need no conversion tool at build time.
+Add new strings to all language headers and `strings.h/.c`. Regenerate fonts using the instructions below, then run `python scripts/check_localization.py`. The original TTF is not distributed.
 
 Printer and language switches are queued and applied in the main loop after the current event returns. This prevents deleting the widget handling an event. Screen transitions release the old screen before constructing the next, without refreshing the intermediate blank screen. Avoid caching multiple full screens in the limited LVGL memory pool.
 
@@ -29,25 +29,27 @@ See [Storage](STORAGE.en.md). Running `uploadfs` or erasing the SPIFFS partition
 
 ## Font generation
 
-Select Simplified Chinese, Traditional Chinese, English, French, Russian or Japanese in Settings. Changes take effect immediately, are saved internally in `/xtouch/settings.json`, and are mirrored to SD when available. Translation files live in `src/ui/i18n/`; `strings.c` provides a shared lookup table.
+Select any of the eight supported languages in Settings. Changes take effect immediately, are saved internally in `/xtouch/settings.json`, and are mirrored to SD when available. Translation files live in `src/ui/i18n/`; `strings.c` provides a shared lookup table.
 
-- Translation selection and strings: `src/ui/i18n/`. Add new text to all six languages.
+- Translation selection and strings: `src/ui/i18n/`. Add new text to every supported language.
 - Global fonts: `LV_FONT_DEFAULT` and `XTOUCH_FONT_NUMERIC` in `resources/lv_conf.h`.
 - Font generation: `scripts/localize_zh.py`; it generates fonts without rewriting application code.
 - Coverage check: `python scripts/check_localization.py`.
 
-To regenerate the subsets, install Node.js and supply a Tencent W7 TTF that you are authorized to use:
+To regenerate subsets, install Node.js and supply authorized input fonts:
 
 ```powershell
-$env:XTOUCH_W7_FONT='C:\fonts\Tencent-W7.ttf'
-$env:XTOUCH_NOTO_FONT='C:\fonts\NotoSansCJKkr-Regular.otf'
+$env:XTOUCH_W7_FONT='C:\fonts\primary.ttf'
+$env:XTOUCH_LATIN_FONT='C:\fonts\latin.ttf'
+$env:XTOUCH_KOREAN_FONT='C:\fonts\korean.ttf'
 python -m pip install fonttools
+python scripts/generate_locales.py
 python scripts/localize_zh.py
 python scripts/check_localization.py
 python -m platformio run
 ```
 
-The original TTF is not distributed. Font rights belong to their respective owners; confirm the applicable permissions before use or redistribution. The vendor fault database is included. To refresh it, install Node.js and build with `XTOUCH_REFRESH_ERRORS=1`.
+The original TTF is not distributed. Font rights belong to their respective owners; confirm the applicable permissions before use or redistribution. Fault descriptions live in the documentation, while firmware displays codes only. See [Error codes](ERROR-CODES.md).
 
 ## Release process
 
@@ -60,3 +62,22 @@ The original TTF is not distributed. Font rights belong to their respective owne
 Normal builds leave the source version and repository release manifest unchanged. Publish verified artifacts. When certificate chains change, update the trusted roots in `ota-certs.h`; keep TLS verification enabled.
 
 Printer artwork, AMS grouping and chamber telemetry: [Printer models and MQTT capabilities](PRINTER-MODELS.en.md).
+
+The portal build reuses the pinned esbuild dependency in web, then uses Zopfli to create standard gzip assets. Sources remain readable. Install dependencies before the first build:
+
+```sh
+npm ci --prefix web
+python -m pip install -r scripts/requirements.txt
+```
+
+## Fault codes and firmware size
+
+The complete corpus lives in `docs/data/error-codes.json` and is excluded from firmware. `scripts/generate_error_docs.py` generates lookup documents and the small Retry/Done action rules. `src/xtouch/errors.c` formats codes in a 32-byte static buffer without heap allocation. Returned text is valid until the next lookup; LVGL copies it for display. New nonzero codes display without updating a whitelist.
+
+Build with `XTOUCH_ERROR_SELFTEST=1` for on-device format, validation and action-rule checks. Release builds exclude those checks. The OTA application partition remains 0x1e0000; packaging rejects oversized images.
+
+## Languages and fonts
+
+Stable language codes: `zh`, `zh-TW`, `en`, `fr`, `de`, `ru`, `ja`, `ko`. Base UI tables live in `src/ui/i18n/`; newer controls and the web portal use `resources/ui-locales.json` and `resources/portal-locales.json`, with the same eight-language order. `scripts/generate_locales.py` creates the read-only control table; `embed_portal.py` bundles the portal dictionary. Regenerate font subsets and run coverage checks after changing translations.
+
+Set `XTOUCH_W7_FONT`, `XTOUCH_LATIN_FONT` and `XTOUCH_KOREAN_FONT` to the primary, supplemental Latin and Korean font files. License notices are in [licenses](licenses/).

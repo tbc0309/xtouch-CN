@@ -1,5 +1,6 @@
 
 #include "ui.h"
+#include "detail_page.h"
 #include "ui_msgs.h"
 
 static bool printerNoticeActive;
@@ -68,6 +69,7 @@ void fillScreenData(int screen)
 void loadScreen(int screen)
 {
     if (screen < -1 || screen > 4) return;
+    ui_detail_page_navigation();
     xTouchConfig.currentScreenIndex = screen;
     lv_obj_t *current = lv_scr_act();
     /* The LVGL pool cannot hold two full pages. Load a lightweight screen

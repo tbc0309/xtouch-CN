@@ -34,7 +34,6 @@ enum XtouchDialogButtonStyle
     lv_obj_t *ui_hmsPanel_create(lv_obj_t *comp_parent);
     void ui_hmsPanel_show(const char *title, enum XtouchDialogButtonStyle btn_style);
     void ui_hmsPanel_hide();
-    const char *ui_hmsPanel_deviceHMSError(unsigned long long prefix);
 #ifdef __cplusplus
 } /*extern "C"*/
 #endif

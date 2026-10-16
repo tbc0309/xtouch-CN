@@ -42,7 +42,26 @@ css_name = 'style-' + hashlib.sha256(css_source.encode()).hexdigest()[:12] + '.c
 html = (source / 'index.html').read_text('utf-8')
 html = html.replace('src="app.js"', f'src="{app_name}"').replace('href="style.css"', f'href="{css_name}"')
 (output / 'index.html').write_text(html, 'utf-8')
+legacy_source = (source / 'legacy.js').read_text('utf-8').replace('./config.js', './' + config_name)
+legacy_name = 'legacy-' + hashlib.sha256(legacy_source.encode()).hexdigest()[:12] + '.js'
+(output / legacy_name).write_text(legacy_source, 'utf-8')
+legacy_html = (source / 'legacy.html').read_text('utf-8').replace('src="legacy.js"', f'src="{legacy_name}"').replace('href="style.css"', f'href="{css_name}"')
+(output / 'legacy.html').write_text(legacy_html, 'utf-8')
 shutil.copytree(source / 'vendor', output / 'vendor', dirs_exist_ok=True)
+from build_error_search import build as build_errors
+error_html = (source / 'errors.html').read_text('utf-8').replace('href="style.css"', f'href="{css_name}"')
+for asset in ('errors.css', 'error-search.js', 'errors.js'):
+    content = (source / asset).read_text('utf-8')
+    if asset == 'errors.js':
+        content = content.replace('./error-search.js', './' + search_name)
+    path = Path(asset)
+    hashed_name = path.stem + '-' + hashlib.sha256(content.encode()).hexdigest()[:12] + path.suffix
+    (output / hashed_name).write_text(content, 'utf-8')
+    error_html = error_html.replace(asset, hashed_name)
+    if asset == 'error-search.js':
+        search_name = hashed_name
+(output / 'errors.html').write_text(error_html, 'utf-8')
+build_errors(output / 'error-codes.json')
 shutil.copytree(source / 'node_modules/esp-web-tools', output / 'licenses/esp-web-tools',
                 ignore=lambda directory,names: [n for n in names if n not in ('LICENSE','LICENSE.md','LICENSE.txt')],
                 dirs_exist_ok=True)

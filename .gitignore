@@ -12,3 +12,6 @@ LOCAL-REVIEW.zh-CN.md
 *.ttf
 *.otf
 python3.cmd
+
+__pycache__/
+*.pyc

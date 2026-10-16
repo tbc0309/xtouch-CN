@@ -8,12 +8,12 @@ Configuration uses a 128KiB SPIFFS partition, independent of the two OTA applica
 
 | Data | Internal path and SD backup path |
 | --- | --- |
-| Wi-Fi, printer profiles, default startup printer | `/xtouch.json` |
+| Wi-Fi, printers, cloud accounts, startup printer | `/xtouch.json` |
 | Language, brightness, sleep, fans, OTA settings | `/xtouch/settings.json` |
 | Touch calibration | `/xtouch/touch.json` |
 | Display orientation | `/xtouch/hardware.json` |
 
-First initialization requires an SD card containing valid `xtouch.json`. Configuration and existing calibration are imported internally. The device can then boot, connect, switch printers, and save settings without SD. Valid internal calibration is reused at startup.
+Initial setup supports touchscreen calibration, QR Wi-Fi setup and printer management in the web portal without SD. A card containing valid `xtouch.json` can optionally import original or legacy configurations. Settings and calibration are stored internally and synchronized to SD when available.
 
 The initial import reads display orientation from internal `/eeprom.bin` when present. The filesystem is created only when the configuration partition is entirely blank. A mount failure on a populated partition displays an error and preserves the data.
 
@@ -72,3 +72,7 @@ Without SD, the small OTA manifest is cached internally and the application is s
 For a damaged configuration filesystem, first preserve SD backups. With the current partition table, recovery can erase only the `0x20000` bytes starting at `0x3D0000`, then restore from SD at startup. Full-chip erasure also deletes internal configuration; back up before erasing.
 
 Configuration contains Wi-Fi passwords and printer access codes. Internal storage does not imply Flash encryption. Keep configuration and backups private.
+
+## Portal backups and account keys
+
+The portal exports/imports configuration, settings and cloud Tokens. Keep backups private. The management password is stored separately; the device-bound cloud-password encryption key remains in NVS and is excluded from backups. Reset or erased-flash installation requires re-entering remembered cloud passwords; OTA retains the key. See [Web management](CLOUD-PORTAL.md).

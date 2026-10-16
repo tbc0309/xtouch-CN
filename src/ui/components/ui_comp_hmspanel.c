@@ -2,10 +2,12 @@
 #include <stdio.h>
 #include "xtouch/hms.h"
 
-unsigned long long ui_hmsPanel_currentError;
+static uint32_t activePrintError;
+static unsigned errorOwner;
 
 void ui_hmsPanel_show(const char *title, enum XtouchDialogButtonStyle btn_style)
 {
+    errorOwner=xtouch_printer_active();
     lv_obj_t *titleLabel = ui_comp_get_child(ui_hmsComponent, UI_COMP_HMSPANEL_HMSPANELCONTAINER_HMSPANELCAPTION);
     lv_obj_t *confirmButton = ui_comp_get_child(ui_hmsComponent, UI_COMP_HMSPANEL_HMSPANELCONTAINER_HMSPANEL_CONFIRM_BUTTON);
     lv_obj_t *retryButton = ui_comp_get_child(ui_hmsComponent, UI_COMP_HMSPANEL_HMSPANELCONTAINER_HMSPANEL_RETRY_BUTTON);
@@ -36,141 +38,75 @@ void ui_hmsPanel_show(const char *title, enum XtouchDialogButtonStyle btn_style)
         lv_obj_add_flag(doneButton, LV_OBJ_FLAG_HIDDEN);
     }
 
-    lv_label_set_text(titleLabel, title);
+    unsigned buttons=1+!lv_obj_has_flag(retryButton,LV_OBJ_FLAG_HIDDEN)+!lv_obj_has_flag(doneButton,LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_max_height(lv_obj_get_parent(titleLabel),buttons==3?64:buttons==2?104:128,0);
+    if(title)lv_label_set_text(titleLabel, title);
+    lv_obj_scroll_to_y(lv_obj_get_parent(titleLabel),0,LV_ANIM_OFF);
 
     lv_obj_clear_flag(ui_hmsComponent, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(ui_hmsComponent);
 }
 
 void ui_hmsPanel_hide()
 {
     lv_obj_add_flag(ui_hmsComponent, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(ui_comp_get_child(ui_hmsComponent,UI_COMP_HMSPANEL_HMSPANELCONTAINER_HMSPANELCAPTION),"");
 }
 
-const char *ui_hmsPanel_xtouch_errors_getHMSError(unsigned long long prefix)
-{
-    char prefix_str[17];
-    sprintf(prefix_str, "%016llX", (unsigned long long)prefix);
-
-    return xtouch_errors_getHMSError(prefix_str);
-}
-
-const char *ui_hmsPanel_deviceHMSError(unsigned long long prefix)
-{
-    char prefix_str[9];
-    snprintf(prefix_str, sizeof(prefix_str), "%08X", (unsigned int)prefix);
-
-    return xtouch_errors_getDeviceError(prefix_str);
-}
-
+/* Both telemetry sources share one modal. Only print_error owns actions. */
+static uint32_t errorRevision;
 void ui_hmsPanelComponent_onXTouchHMSError(lv_event_t *e)
 {
-    if (!hms_isQueueEmpty())
-    {
-        ui_hmsPanel_currentError = hms_dequeue();
-
-        if (ui_hmsPanel_currentError != 0xFFFFFFFFFFFFFFFF)
-        {
-            if (ui_hmsPanel_currentError <= 0xFFFFFFFF)
-            // DEVICE ERROR
-            {
-                char ui_hmsPanel_currentErrorString[9];
-                sprintf(ui_hmsPanel_currentErrorString, "%08X", bambuStatus.print_error);
-                bool hasRetry = xtouch_errors_deviceErrorHasRetry(ui_hmsPanel_currentErrorString);
-                bool hasDone = xtouch_errors_deviceErrorHasDone(ui_hmsPanel_currentErrorString);
-                const char *error = ui_hmsPanel_deviceHMSError(ui_hmsPanel_currentError);
-                if (error && error[0])
-                {
-                    ui_hmsPanel_show(error,
-                                     hasRetry ? (hasDone ? DONE_AND_RETRY : CONFIRM_AND_RETRY) : (hasDone ? CONFIRM_AND_DONE : ONLY_CONFIRM));
-                }
-                else
-                {
-                    ui_hmsPanelComponent_onXTouchHMSError(NULL);
-                }
-            }
-            else
-            // HMSERROR
-            {
-                unsigned int reversed_msg_level = (ui_hmsPanel_currentError >> 16) & 0x1F;
-                const char *error = ui_hmsPanel_xtouch_errors_getHMSError(ui_hmsPanel_currentError);
-                switch (reversed_msg_level)
-                {
-                case HMS_INFO:
-                    if (error && error[0])
-                    {
-                        ui_hmsPanel_show(error, ONLY_CONFIRM);
-                    }
-                    else
-                    {
-                        ui_hmsPanelComponent_onXTouchHMSError(NULL);
-                    }
-                    break;
-                default:
-                    ui_hmsPanelComponent_onXTouchHMSError(NULL);
-                    break;
-                }
-            }
-        }
+    uint32_t print=hms_print_error();unsigned count=hms_health_count();
+    if(!print&&!count){ui_hmsPanel_hide();return;}
+    if(!hms_has_pending()&&lv_obj_has_flag(ui_hmsComponent,LV_OBJ_FLAG_HIDDEN))return;
+    // Keep the main-loop stack bounded. LVGL owns one growing label string,
+    // and hiding the dialog releases it; no second full-list buffer is kept.
+    lv_obj_t *caption=ui_comp_get_child(ui_hmsComponent,UI_COMP_HMSPANEL_HMSPANELCONTAINER_HMSPANELCAPTION);
+    char line[32];
+    if(print){snprintf(line,sizeof(line),"0x%08X",(unsigned)print);lv_label_set_text(caption,line);}else lv_label_set_text(caption,"");
+    for(unsigned i=0;i<count;++i){
+        uint64_t code=hms_health_at(i);
+        snprintf(line,sizeof(line),"%sHMS %04X-%04X-%04X-%04X",(print||i)?"\n":"",(unsigned)(code>>48),(unsigned)((code>>32)&65535),(unsigned)((code>>16)&65535),(unsigned)(code&65535));
+        lv_label_ins_text(caption,LV_LABEL_POS_LAST,line);
     }
+    if(hms_health_truncated())lv_label_ins_text(caption,LV_LABEL_POS_LAST,"\n...");
+    char key[9];snprintf(key,sizeof(key),"%08X",(unsigned)print);
+    unsigned actions=print?xtouch_errors_deviceActions(key,xTouchConfig.xTouchSerialNumber):0;
+    activePrintError=print;errorRevision=hms_revision();
+    // A newly reported fault cancels any obsolete actuator confirmation.
+    ui_confirmPanel_hide();
+    ui_hmsPanel_show(NULL,(actions&1)?((actions&2)?DONE_AND_RETRY:CONFIRM_AND_RETRY):((actions&2)?CONFIRM_AND_DONE:ONLY_CONFIRM));
 }
-
-void ui_event_comp_hmsPanel_onButtonDequeueOnTimer(lv_timer_t *timer)
+static bool current_action(unsigned flag)
 {
-    ui_hmsPanelComponent_onXTouchHMSError(NULL);
+    if(errorOwner!=xtouch_printer_active()||!xtouch_printer_online()||xtouch_printer_switch_pending()||errorRevision!=hms_revision()||!activePrintError||activePrintError!=hms_print_error())return false;
+    if(!flag)return true;
+    char key[9];snprintf(key,sizeof(key),"%08X",(unsigned)activePrintError);
+    return (xtouch_errors_deviceActions(key,xTouchConfig.xTouchSerialNumber)&flag)!=0;
 }
-
-void ui_event_comp_hmsPanel_onButtonDequeue()
-{
-    lv_timer_t *ui_event_comp_hmsPanel_buttonDequeueTimer = lv_timer_create(ui_event_comp_hmsPanel_onButtonDequeueOnTimer, 500, NULL);
-    lv_timer_set_repeat_count(ui_event_comp_hmsPanel_buttonDequeueTimer, 1);
-}
-
 void ui_event_comp_hmsPanel_onDoneClick(lv_event_t *e)
 {
-    lv_event_code_t event_code = lv_event_get_code(e);
-    if (event_code == LV_EVENT_CLICKED)
-    {
-        ui_hmsPanel_hide();
-        lv_msg_send(XTOUCH_COMMAND_AMS_CONTROL, "done");
-        if (!hms_isQueueEmpty())
-        {
-            ui_event_comp_hmsPanel_onButtonDequeue();
-        }
-    }
+    if(lv_event_get_code(e)!=LV_EVENT_CLICKED)return;
+    bool allowed=current_action(2);hms_dismiss();ui_hmsPanel_hide();
+    if(allowed)lv_msg_send(XTOUCH_COMMAND_AMS_CONTROL,"done");
 }
-
 void ui_event_comp_hmsPanel_onConfirmClick(lv_event_t *e)
 {
-    lv_event_code_t event_code = lv_event_get_code(e);
-    if (event_code == LV_EVENT_CLICKED)
-    {
-        ui_hmsPanel_hide();
-
-        ClearErrorMessage clearErrorMessage;
-        clearErrorMessage.print_error = ui_hmsPanel_currentError;
-        strcpy(clearErrorMessage.subtask_id, bambuStatus.subtask_id_);
-
-        lv_msg_send(XTOUCH_COMMAND_CLEAN_PRINT_ERROR, &clearErrorMessage);
-
-        if (!hms_isQueueEmpty())
-        {
-            ui_event_comp_hmsPanel_onButtonDequeue();
-        }
+    if(lv_event_get_code(e)!=LV_EVENT_CLICKED)return;
+    bool allowed=current_action(0);hms_dismiss();ui_hmsPanel_hide();
+    // Closing an HMS-only report is always local. Never truncate a 64-bit HMS.
+    if(allowed){
+        ClearErrorMessage message;message.print_error=(int)activePrintError;
+        snprintf(message.subtask_id,sizeof(message.subtask_id),"%s",bambuStatus.subtask_id_);
+        lv_msg_send(XTOUCH_COMMAND_CLEAN_PRINT_ERROR,&message);
     }
 }
-
 void ui_event_comp_hmsPanel_onRetryClick(lv_event_t *e)
 {
-    lv_event_code_t event_code = lv_event_get_code(e);
-    if (event_code == LV_EVENT_CLICKED)
-    {
-        ui_hmsPanel_hide();
-        lv_msg_send(XTOUCH_COMMAND_AMS_CONTROL, "resume");
-        if (!hms_isQueueEmpty())
-        {
-            ui_event_comp_hmsPanel_onButtonDequeue();
-        }
-    }
+    if(lv_event_get_code(e)!=LV_EVENT_CLICKED)return;
+    bool allowed=current_action(1);hms_dismiss();ui_hmsPanel_hide();
+    if(allowed)lv_msg_send(XTOUCH_COMMAND_AMS_CONTROL,"resume");
 }
 
 lv_obj_t *ui_hmsPanel_create(lv_obj_t *comp_parent)
@@ -189,6 +125,7 @@ lv_obj_t *ui_hmsPanel_create(lv_obj_t *comp_parent)
     lv_obj_set_style_bg_color(cui_hmsPanel, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(cui_hmsPanel, 200, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(cui_hmsPanel, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(cui_hmsPanel,8,0);
 
     lv_obj_t *cui_hmsPanelContainer;
     cui_hmsPanelContainer = lv_obj_create(cui_hmsPanel);
@@ -201,12 +138,28 @@ lv_obj_t *ui_hmsPanel_create(lv_obj_t *comp_parent)
     lv_obj_set_style_bg_color(cui_hmsPanelContainer, lv_color_hex(0x555555), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(cui_hmsPanelContainer, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(cui_hmsPanelContainer, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(cui_hmsPanelContainer,12,0);
+    lv_obj_set_style_pad_row(cui_hmsPanelContainer,8,0);
 
+    // Scroll the combined list, leaving the action buttons visible.
+    lv_obj_t *codeList=lv_obj_create(cui_hmsPanelContainer);
+    lv_obj_remove_style_all(codeList);
+    lv_obj_set_width(codeList,lv_pct(100));
+    lv_obj_set_height(codeList,LV_SIZE_CONTENT);
+    lv_obj_set_style_max_height(codeList,128,0);
+    lv_obj_set_style_pad_right(codeList,4,0);
+    lv_obj_set_style_width(codeList,3,LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_color(codeList,lv_color_hex(0xAAAAAA),LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_opa(codeList,LV_OPA_70,LV_PART_SCROLLBAR);
+    lv_obj_set_scroll_dir(codeList,LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(codeList,LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_clear_flag(codeList,LV_OBJ_FLAG_SCROLL_CHAIN|LV_OBJ_FLAG_SCROLL_ELASTIC);
     lv_obj_t *cui_hmsPanelCaption;
-    cui_hmsPanelCaption = lv_label_create(cui_hmsPanelContainer);
+    cui_hmsPanelCaption = lv_label_create(codeList);
+    lv_obj_set_width(cui_hmsPanelCaption,lv_pct(100));
 
     lv_obj_set_height(cui_hmsPanelCaption, LV_SIZE_CONTENT); /// 1
-    lv_obj_set_flex_grow(cui_hmsPanelCaption, 1);
+    lv_obj_set_flex_grow(cui_hmsPanelCaption, 0);
     lv_label_set_text(cui_hmsPanelCaption, XTOUCH_TEXT_ARE_YOU_SURE);
     lv_label_set_long_mode(cui_hmsPanelCaption, LV_LABEL_LONG_WRAP);
     lv_obj_clear_flag(cui_hmsPanelCaption, LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_CHAIN); /// Flags

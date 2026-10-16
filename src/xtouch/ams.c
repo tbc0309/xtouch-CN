@@ -3,7 +3,7 @@
 
 void xtouch_ams_parse_tray_now(const char *tray_now)
 {
-    if (strlen(tray_now) == 0)
+    if (!tray_now || strlen(tray_now) == 0)
     {
         return;
     }

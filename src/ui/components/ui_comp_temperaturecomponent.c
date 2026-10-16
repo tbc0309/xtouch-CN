@@ -1,4 +1,7 @@
 #include "../ui.h"
+#include "../nozzle_details.h"
+#include "../numeric_editor.h"
+#include "../filament_actions.h"
 
 lv_obj_t *ui_temperatureComponent_input_target;
 int ui_temperatureComponent_backToScreen = -1;
@@ -20,6 +23,7 @@ void ui_temperatureComponent_on_keypad(char *key)
 }
 void ui_temperatureComponent_hide_keypad()
 {
+    if(ui_numeric_active()){ui_numeric_cancel();return;}
     lv_obj_t *keyboard = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTKEYBOARD);
     lv_obj_t *temps = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTTEMPS);
     lv_obj_t *fans = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTFANS);
@@ -30,6 +34,7 @@ void ui_temperatureComponent_hide_keypad()
     lv_obj_t *chamber = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTFANS_TEMPERATURECOMPONENTCHAMBERFAN);
 
     if (ui_temperatureComponent_input_target) {
+        lv_obj_clear_flag(ui_temperatureComponent_input_target, LV_OBJ_FLAG_IGNORE_LAYOUT);
         lv_obj_t *parent=lv_obj_get_parent(ui_temperatureComponent_input_target);
         bool heating=parent==bed ? bambuStatus.bed_target_temper>0 : parent==nozzle && bambuStatus.nozzle_target_temper>0;
         lv_obj_set_style_text_color(ui_temperatureComponent_input_target,lv_color_hex(heating ? 0xff682a : 0x777777),LV_PART_TEXTAREA_PLACEHOLDER);
@@ -46,9 +51,9 @@ void ui_temperatureComponent_hide_keypad()
     lv_obj_clear_flag(part, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(aux, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(chamber, LV_OBJ_FLAG_HIDDEN);
-    if ((xtouch_bblp_is_p1p() || xtouch_bblp_is_x1()) && !xTouchConfig.xTouchAuxFanEnabled)
+    if (!xtouch_bblp_fan_supported(1))
         lv_obj_add_flag(aux, LV_OBJ_FLAG_HIDDEN);
-    if (xtouch_bblp_is_p1p() && !xTouchConfig.xTouchChamberFanEnabled)
+    if (!xtouch_bblp_fan_supported(2))
         lv_obj_add_flag(chamber, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_state(bed, LV_STATE_CHECKED);
     lv_obj_clear_state(nozzle, LV_STATE_CHECKED);
@@ -58,9 +63,8 @@ void ui_temperatureComponent_hide_keypad()
 
     lv_obj_clear_state(bed, LV_STATE_DISABLED);
     lv_obj_clear_state(nozzle, LV_STATE_DISABLED);
-    lv_obj_clear_state(part, LV_STATE_DISABLED);
-    lv_obj_clear_state(aux, LV_STATE_DISABLED);
-    lv_obj_clear_state(chamber, LV_STATE_DISABLED);
+    lv_obj_t *fanButtons[]={part,aux,chamber};for(unsigned i=0;i<3;i++){if(xtouch_bblp_fan_supported(i)&&(bambuStatus.fan_valid&(1U<<i)))lv_obj_clear_state(fanButtons[i],LV_STATE_DISABLED);else lv_obj_add_state(fanButtons[i],LV_STATE_DISABLED);}
+    if(!xtouch_bblp_fan_supported(0)&&!xtouch_bblp_fan_supported(1)&&!xtouch_bblp_fan_supported(2))lv_obj_add_flag(fans,LV_OBJ_FLAG_HIDDEN);
     ui_temperatureComponent_input_target = NULL;
 
     if(ui_temperatureComponent_backToScreen != -1){
@@ -120,8 +124,11 @@ void ui_temperatureComponent_show_keypad(int type, int index)
             break;
         }
     }
+    const char *current=lv_textarea_get_text(ui_temperatureComponent_input_target);if(*current)lv_textarea_set_placeholder_text(ui_temperatureComponent_input_target,current);
+    lv_obj_add_flag(ui_temperatureComponent_input_target, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_align(ui_temperatureComponent_input_target, LV_ALIGN_BOTTOM_MID, 0, -12);
     lv_textarea_set_text(ui_temperatureComponent_input_target, "");
-    lv_obj_clear_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
+    update_back_key();lv_obj_clear_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
 }
 
 void ui_temperatureComponent_show_keypad_and_back(int type, int index, int backToScreen)
@@ -148,6 +155,7 @@ void ui_event_comp_temperatureComponent_temperatureComponentNozzle(lv_event_t *e
     lv_obj_t **comp_temperatureComponent = lv_event_get_user_data(e);
     if (event_code == LV_EVENT_CLICKED)
     {
+        if(bambuStatus.nozzle_count>0){ui_nozzle_details_show();return;}
         ui_temperatureComponent_show_keypad(0, 1);
         lv_obj_add_state(target, LV_STATE_CHECKED);
     }
@@ -216,6 +224,13 @@ void ui_event_comp_temperatureComponent_numpadKeyBack(lv_event_t *e)
         update_back_key();
     }
 }
+static unsigned legacyHeatOwner,legacyHeatValue,legacyHeatType;
+static void legacy_heat_confirm(void){
+ if(xtouch_command_pending()||legacyHeatOwner!=xtouch_printer_active()||!xtouch_printer_online()||xtouch_printer_switch_pending()||ui_numeric_active()||xTouchConfig.currentScreenIndex!=1||!ui_temperatureComponent_input_target)return;
+ if(legacyHeatType==0){if(legacyHeatValue>(xtouch_bblp_is_p1Series()?100:120))return;controlMode.target_bed_temper=legacyHeatValue;lv_msg_send(XTOUCH_COMMAND_BED_TARGET_TEMP,NULL);}
+ else {if(bambuStatus.nozzle_count||legacyHeatValue>300)return;controlMode.target_nozzle_temper=legacyHeatValue;lv_msg_send(XTOUCH_COMMAND_NOZZLE_TARGET_TEMP,NULL);}
+ lv_textarea_set_text(ui_temperatureComponent_input_target,"");ui_temperatureComponent_hide_keypad();
+}
 void ui_event_comp_temperatureComponent_numpadKeyOk(lv_event_t *e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
@@ -223,26 +238,23 @@ void ui_event_comp_temperatureComponent_numpadKeyOk(lv_event_t *e)
     lv_obj_t **comp_temperatureComponent = lv_event_get_user_data(e);
     if (event_code == LV_EVENT_CLICKED)
     {
+        if(ui_numeric_active()){ui_numeric_commit();return;}
+        if(!ui_temperatureComponent_input_target||!*lv_textarea_get_text(ui_temperatureComponent_input_target))return;
         lv_obj_t *bed = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTTEMPS_TEMPERATURECOMPONENTBED_MAINSCREENBEDTEMPINPUT);
         lv_obj_t *nozzle = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTTEMPS_TEMPERATURECOMPONENTNOZZLE_MAINSCREENNOZZLETEMPINPUT);
         lv_obj_t *part = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTFANS_TEMPERATURECOMPONENTPARTFAN_TEMPERATURECOMPONENTPARTFANINPUT);
         lv_obj_t *aux = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTFANS_TEMPERATURECOMPONENTAUXFAN_TEMPERATURECOMPONENTAUXFANINPUT);
         lv_obj_t *chamber = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTFANS_TEMPERATURECOMPONENTCHAMBERFAN_TEMPERATURECOMPONENTCHAMBERFANINPUT);
-        if (ui_temperatureComponent_input_target == bed)
-        {
-            const char *data = lv_textarea_get_text(bed);
-            controlMode.target_bed_temper = atoi(data);
-            lv_msg_send(XTOUCH_COMMAND_BED_TARGET_TEMP, NULL);
-            lv_textarea_set_text(bed, "");
+        unsigned entered=atoi(lv_textarea_get_text(ui_temperatureComponent_input_target));
+        unsigned limit=ui_temperatureComponent_input_target==bed?(xtouch_bblp_is_p1Series()?100:120):ui_temperatureComponent_input_target==nozzle?300:100;
+        if(entered>limit){char range[24];snprintf(range,sizeof(range),"0 - %u",limit);lv_textarea_set_text(ui_temperatureComponent_input_target,"");lv_textarea_set_placeholder_text(ui_temperatureComponent_input_target,range);update_back_key();return;}
+        if(!xtouch_printer_online()||xtouch_printer_switch_pending())return;
+        if(ui_temperatureComponent_input_target==bed||ui_temperatureComponent_input_target==nozzle){
+            if(xtouch_command_pending()){ui_notice_unavailable();return;}
+            legacyHeatOwner=xtouch_printer_active();legacyHeatValue=entered;legacyHeatType=ui_temperatureComponent_input_target==bed?0:1;
+            char text[60];snprintf(text,sizeof(text),"%s %uC?",legacyHeatType?(xtouch_local("喷头", "Nozzle")):(xtouch_local("热床", "Bed")),entered);ui_confirmPanel_show(text,legacy_heat_confirm);return;
         }
-        else if (ui_temperatureComponent_input_target == nozzle)
-        {
-            const char *data = lv_textarea_get_text(nozzle);
-            controlMode.target_nozzle_temper = atoi(data);
-            lv_msg_send(XTOUCH_COMMAND_NOZZLE_TARGET_TEMP, NULL);
-            lv_textarea_set_text(nozzle, "");
-        }
-        else if (ui_temperatureComponent_input_target == part)
+        if (ui_temperatureComponent_input_target == part)
         {
             const char *data = lv_textarea_get_text(part);
             bambuStatus.cooling_fan_speed = atoi(data) * 255 / 100;
@@ -278,6 +290,8 @@ void ui_temperatureComponent_onXtouchTemp(lv_event_t *e)
 
     char value[10];
 
+    unsigned bit=lv_msg_get_id(m)==XTOUCH_ON_BED_TEMP?1:4;
+    if(!(bambuStatus.temperature_valid&bit)){lv_label_set_text(target,"--");return;}
     itoa(message->data, value, 10);
     lv_label_set_text(target, value);
 }
@@ -302,7 +316,8 @@ void ui_temperatureComponent_onXtouchTempTarget(lv_event_t *e)
 
     char value[12];
     itoa(message->data, value, 10);
-    lv_textarea_set_placeholder_text(inputTarget, value);
+    unsigned bit=lv_msg_get_id(m)==XTOUCH_ON_BED_TARGET_TEMP?2:8;
+    lv_textarea_set_placeholder_text(inputTarget,(bambuStatus.temperature_valid&bit)?value:"--");
     lv_obj_set_style_text_color(inputTarget, message->data > 0 ? lv_color_hex(0xff682a) : lv_color_hex(0x777777), LV_PART_TEXTAREA_PLACEHOLDER | LV_STATE_DEFAULT);
 }
 
@@ -312,10 +327,14 @@ void ui_temperatureComponent_onXtouchPartFanSpeed(lv_event_t *e)
     lv_msg_t *m = lv_event_get_msg(e);
 
     struct XTOUCH_MESSAGE_DATA *message = (struct XTOUCH_MESSAGE_DATA *)m->payload;
+    lv_obj_t *card=lv_obj_get_parent(target);
+    if(!ui_temperatureComponent_input_target){if(!xtouch_bblp_fan_supported(0))lv_obj_add_flag(card,LV_OBJ_FLAG_HIDDEN);else lv_obj_clear_flag(card,LV_OBJ_FLAG_HIDDEN);lv_obj_t *group=lv_obj_get_parent(card);if(!xtouch_bblp_fan_supported(0)&&!xtouch_bblp_fan_supported(1)&&!xtouch_bblp_fan_supported(2))lv_obj_add_flag(group,LV_OBJ_FLAG_HIDDEN);else lv_obj_clear_flag(group,LV_OBJ_FLAG_HIDDEN);}
+    if((bambuStatus.fan_valid&1)&&xtouch_bblp_fan_supported(0))lv_obj_clear_state(card,LV_STATE_DISABLED);else lv_obj_add_state(card,LV_STATE_DISABLED);
     char value[12];
 
     itoa(round(message->data * 100 / 255.), value, 10);
-    lv_textarea_set_text(target, value);
+    if(ui_temperatureComponent_input_target==target)return;
+    lv_textarea_set_text(target,(bambuStatus.fan_valid&1)?value:"--");
 }
 
 void ui_temperatureComponent_onXtouchAuxFanSpeed(lv_event_t *e)
@@ -324,10 +343,14 @@ void ui_temperatureComponent_onXtouchAuxFanSpeed(lv_event_t *e)
     lv_msg_t *m = lv_event_get_msg(e);
 
     struct XTOUCH_MESSAGE_DATA *message = (struct XTOUCH_MESSAGE_DATA *)m->payload;
+    lv_obj_t *card=lv_obj_get_parent(target);
+    if(!ui_temperatureComponent_input_target){if(!xtouch_bblp_fan_supported(1))lv_obj_add_flag(card,LV_OBJ_FLAG_HIDDEN);else lv_obj_clear_flag(card,LV_OBJ_FLAG_HIDDEN);lv_obj_t *group=lv_obj_get_parent(card);if(!xtouch_bblp_fan_supported(0)&&!xtouch_bblp_fan_supported(1)&&!xtouch_bblp_fan_supported(2))lv_obj_add_flag(group,LV_OBJ_FLAG_HIDDEN);else lv_obj_clear_flag(group,LV_OBJ_FLAG_HIDDEN);}
+    if((bambuStatus.fan_valid&2)&&xtouch_bblp_fan_supported(1))lv_obj_clear_state(card,LV_STATE_DISABLED);else lv_obj_add_state(card,LV_STATE_DISABLED);
     char value[12];
 
     itoa(round(message->data * 100 / 255.), value, 10);
-    lv_textarea_set_text(target, value);
+    if(ui_temperatureComponent_input_target==target)return;
+    lv_textarea_set_text(target,(bambuStatus.fan_valid&2)?value:"--");
 }
 
 void ui_temperatureComponent_onXtouchChamberFanSpeed(lv_event_t *e)
@@ -336,10 +359,14 @@ void ui_temperatureComponent_onXtouchChamberFanSpeed(lv_event_t *e)
     lv_msg_t *m = lv_event_get_msg(e);
 
     struct XTOUCH_MESSAGE_DATA *message = (struct XTOUCH_MESSAGE_DATA *)m->payload;
+    lv_obj_t *card=lv_obj_get_parent(target);
+    if(!ui_temperatureComponent_input_target){if(!xtouch_bblp_fan_supported(2))lv_obj_add_flag(card,LV_OBJ_FLAG_HIDDEN);else lv_obj_clear_flag(card,LV_OBJ_FLAG_HIDDEN);lv_obj_t *group=lv_obj_get_parent(card);if(!xtouch_bblp_fan_supported(0)&&!xtouch_bblp_fan_supported(1)&&!xtouch_bblp_fan_supported(2))lv_obj_add_flag(group,LV_OBJ_FLAG_HIDDEN);else lv_obj_clear_flag(group,LV_OBJ_FLAG_HIDDEN);}
+    if((bambuStatus.fan_valid&4)&&xtouch_bblp_fan_supported(2))lv_obj_clear_state(card,LV_STATE_DISABLED);else lv_obj_add_state(card,LV_STATE_DISABLED);
     char value[4];
 
     itoa(round(message->data * 100 / 255.), value, 10);
-    lv_textarea_set_text(target, value);
+    if(ui_temperatureComponent_input_target==target)return;
+    lv_textarea_set_text(target,(bambuStatus.fan_valid&4)?value:"--");
 }
 
 // COMPONENT temperatureComponent
@@ -673,7 +700,7 @@ lv_obj_t *ui_temperatureComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_bg_color(cui_temperatureComponentAuxFan, lv_color_hex(0x2aff00), LV_PART_MAIN | LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(cui_temperatureComponentAuxFan, 255, LV_PART_MAIN | LV_STATE_PRESSED);
 
-    if ((xtouch_bblp_is_p1p() || xtouch_bblp_is_x1()) && !xTouchConfig.xTouchAuxFanEnabled)
+    if (!xtouch_bblp_fan_supported(1))
     {
         lv_obj_add_flag(cui_temperatureComponentAuxFan, LV_OBJ_FLAG_HIDDEN);
     }

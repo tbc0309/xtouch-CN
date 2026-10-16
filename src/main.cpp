@@ -26,6 +26,12 @@
 #include "xtouch/events.h"
 #include "xtouch/connection.h"
 #include "xtouch/coldboot.h"
+#include "xtouch/portal.h"
+
+void xtouch_portal_release_transport() {
+  xtouch_pubSubClient.disconnect();xtouch_wiFiClientSecure.stop();
+  xtouch_mqtt_hasStatus=false;xtouch_mqtt_nextAttempt=millis()+3000;
+}
 
 void xtouch_intro_show(void)
 {
@@ -41,6 +47,9 @@ void setup()
   Serial.begin(115200);
 #endif
 
+#ifdef XTOUCH_ERROR_SELFTEST
+  Serial.printf("[ERROR-CODES] formatting, actions and faults: %s\n",(xtouch_errors_selftest()&&hms_selftest())?"PASS":"FAIL");
+#endif
   bool storageReady = xtouch_storage_begin();
   if (storageReady) xtouch_eeprom_setup();
   xtouch_globals_init();
@@ -56,14 +65,6 @@ void setup()
   // A recovery card containing only firmware.bin must not be blocked by
   // missing Wi-Fi/printer provisioning on an uninitialized device.
   if (!xtouch_storage_has(xtouch_paths_config)) xtouch_firmware_checkFirmwareUpdate();
-  while (!xtouch_storage_has(xtouch_paths_config)) {
-    lv_label_set_text(introScreenCaption, XTOUCH_TEXT_INITIAL_CONFIG);
-    lv_timer_handler();
-    xtouch_sdcard_poll(false);
-    xtouch_firmware_checkFirmwareUpdate();
-    delay(20);
-  }
-
   xtouch_coldboot_check();
 
   xtouch_settings_loadSettings();
@@ -72,8 +73,11 @@ void setup()
 
   xtouch_touch_setup();
 
-  while (!xtouch_wifi_setup())
-    ;
+  { DynamicJsonDocument bootConfig=xtouch_load_config(); }
+  xtouch_portal_begin();
+  while (WiFi.status() != WL_CONNECTED) {
+    lv_timer_handler(); xtouch_portal_loop(); xtouch_sdcard_poll(false); delay(5);
+  }
 
   // Non-blocking time synchronization also dates changes when OTA is disabled.
   xtouch_start_clock_sync();
@@ -106,7 +110,13 @@ void loop()
     uint32_t shown=millis();while(millis()-shown<1800){lv_timer_handler();delay(5);}
     loadScreen(4);xtouch_mqtt_nextAttempt=millis();
   }
-  xtouch_mqtt_loop();
+  xtouch_portal_loop();
+  xtouch_device_filament_poll();
+  if (xtouch_portal_maintenance()) {
+    if (xtouch_pubSubClient.connected()) xtouch_pubSubClient.disconnect();
+    xtouch_wiFiClientSecure.stop();
+    if (xtouch_cloud_job_pending()) xtouch_cloud_job_result();
+  } else xtouch_mqtt_loop();
   static bool clockReady = false;
   if (!clockReady && time(NULL) > 1577836800) {
     xtouch_storage_clock_ready();

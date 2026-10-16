@@ -86,6 +86,10 @@ extern "C"
   void ui_init(void);
 
   bool xtouch_bblp_is_p1p();
+  bool xtouch_bblp_chamber_display(void);
+  bool xtouch_bblp_chamber_heater(void);
+  unsigned xtouch_bblp_chamber_max(void);
+  bool xtouch_bblp_fan_supported(unsigned index);
   bool xtouch_bblp_is_p1Series();
   bool xtouch_bblp_is_x1();
   bool xtouch_bblp_is_x1s();

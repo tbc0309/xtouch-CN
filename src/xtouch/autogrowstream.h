@@ -1,57 +1,29 @@
-#ifndef XtouchAutoGrowBufferStream_h
-#define XtouchAutoGrowBufferStream_h
-
+#pragma once
 #include <Arduino.h>
 #include <Stream.h>
 
-// XtouchAutoGrowBufferStream class definition
-class XtouchAutoGrowBufferStream : public Stream
-{
-private:
-   uint16_t _len;        // Current length of data in the buffer
-   uint16_t buffer_size; // Size of the buffer
-   char* _buffer;        // Buffer pointer
+// Bounded MQTT frame storage. Small blocks avoid requiring a contiguous 60KB
+// allocation beside TLS and LVGL. Rewind supports two filtered JSON passes.
+class XtouchAutoGrowBufferStream : public Stream {
+    static constexpr unsigned BlockSize = 1024, BlockCount = 60, MaxBytes = 61439;
+    uint8_t *blocks[BlockCount] = {};
+    uint32_t length = 0, cursor = 0;
+    bool broken = false;
+    uint8_t at(uint32_t n) const { return blocks[n / BlockSize][n % BlockSize]; }
 
-public:
-  // Constructor
-  XtouchAutoGrowBufferStream();
-
-  // Destructor
-  ~XtouchAutoGrowBufferStream() {
-    free(this->_buffer); // Free dynamically allocated memory
-  }
-
-  // Conversion operators
-  operator const uint8_t *() const { return NULL; }
-  operator const char *() const { return (const char*)NULL; }
-
-  // Get the current length of data in the buffer
-  const uint16_t current_length() const { return _len; }
-
-  // Stream-related methods
-  bool listen() { return true; }
-  void end() {}
-  bool isListening() { return true; }
-  int peek();
-
-  // Stream virtual methods
-  virtual size_t write(uint8_t byte);
-  virtual int read();
-  virtual int available();
-  virtual void flush();
-
-  // Get the buffer pointer
-  const char* get_buffer() const { return _buffer; }
-  bool includes(const char* target);
-
-  // Get the buffer as a null-terminated string
-  const char* get_string() const { 
-    // Null terminate
-    _buffer[_len] = '\0';
-    return _buffer;
-  }
-
-  using Print::write; // Allow write methods from the Print class
+  public:
+    XtouchAutoGrowBufferStream() { setTimeout(0); }
+    ~XtouchAutoGrowBufferStream();
+    XtouchAutoGrowBufferStream(const XtouchAutoGrowBufferStream &) = delete;
+    XtouchAutoGrowBufferStream &operator=(const XtouchAutoGrowBufferStream &) = delete;
+    uint32_t current_length() const { return length; }
+    bool failed() const { return broken; }
+    void rewind() { cursor = 0; }
+    bool includes(const char *target) const;
+    size_t write(uint8_t byte) override;
+    int read() override { return cursor < length ? at(cursor++) : -1; }
+    int peek() override { return cursor < length ? at(cursor) : -1; }
+    int available() override { return length - cursor; }
+    void flush() override;
+    using Print::write;
 };
-
-#endif

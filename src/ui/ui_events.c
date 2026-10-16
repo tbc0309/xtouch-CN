@@ -1,3 +1,4 @@
+#include "nozzle_details.h"
 #include "filament_actions.h"
 #include "ui.h"
 #include "../../src/xtouch/types.h"
@@ -14,6 +15,7 @@ void onSidebarSettings(lv_event_t *e) { loadScreen(4); }
 /* -----------Home-------------- */
 void onHomeControllerPlayPauseConfirm()
 {
+    if(xTouchConfig.currentScreenIndex!=0||!xtouch_printer_online())return;
     lv_obj_t *target = ui_comp_get_child(ui_homeComponent, UI_COMP_HOMECOMPONENT_MAINSCREENLEFT_MAINSCREENPLAYER_MAINSCREENCONTROLLER_MAINSCREENPLAYPAUSEBUTTON);
     lv_msg_send(XTOUCH_COMMAND_PAUSE, NULL);
     lv_obj_add_state(target, LV_STATE_DISABLED);
@@ -56,6 +58,7 @@ void onHomeBedTemp(lv_event_t *e)
 }
 void onHomeNozzleTemp(lv_event_t *e, int backToScreen)
 {
+    if(bambuStatus.nozzle_count){ui_nozzle_details_show();return;}
     loadScreen(1);
     ui_temperatureComponent_show_keypad_and_back(0, 1, backToScreen);
 
@@ -77,11 +80,13 @@ void onTemperatureKeypad(lv_event_t *e) { lv_msg_send(XTOUCH_CONTROL_INC_SWITCH,
 
 /* -----------Control-------------- */
 void onControlRange(lv_event_t *e) { lv_msg_send(XTOUCH_CONTROL_INC_SWITCH, NULL); }
-void onControlHome(lv_event_t *e) { lv_msg_send(XTOUCH_COMMAND_HOME, NULL); }
-void onControlLeft(lv_event_t *e) { lv_msg_send(XTOUCH_COMMAND_LEFT, NULL); }
-void onControlRight(lv_event_t *e) { lv_msg_send(XTOUCH_COMMAND_RIGHT, NULL); }
-void onControlUp(lv_event_t *e) { lv_msg_send(XTOUCH_COMMAND_UP, NULL); }
-void onControlDown(lv_event_t *e) { lv_msg_send(XTOUCH_COMMAND_DOWN, NULL); }
+bool ui_manual_motion_allowed(void){return !xtouch_command_pending()&&xtouch_printer_online()&&!xtouch_printer_switch_pending()&&!bambuStatus.non_fdm_mode&&!bambuStatus.extruder_busy&&(bambuStatus.print_status==XTOUCH_PRINT_STATUS_IDLE||bambuStatus.print_status==XTOUCH_PRINT_STATUS_FINISHED||bambuStatus.print_status==XTOUCH_PRINT_STATUS_FAILED);}
+static void home_confirm(void){if(ui_manual_motion_allowed())lv_msg_send(XTOUCH_COMMAND_HOME,NULL);}
+void onControlHome(lv_event_t *e){if(ui_manual_motion_allowed())ui_confirmPanel_show(xtouch_local("归位？打印头将移动", "Home axes? Toolhead will move."),home_confirm);}
+void onControlLeft(lv_event_t *e) { if(ui_manual_motion_allowed())lv_msg_send(XTOUCH_COMMAND_LEFT, NULL); }
+void onControlRight(lv_event_t *e) { if(ui_manual_motion_allowed())lv_msg_send(XTOUCH_COMMAND_RIGHT, NULL); }
+void onControlUp(lv_event_t *e) { if(ui_manual_motion_allowed())lv_msg_send(XTOUCH_COMMAND_UP, NULL); }
+void onControlDown(lv_event_t *e) { if(ui_manual_motion_allowed())lv_msg_send(XTOUCH_COMMAND_DOWN, NULL); }
 void onControlAxis(lv_event_t *e) { lv_msg_send(XTOUCH_CONTROL_AXIS_SWITCH, NULL); }
 
 /* Settings */
@@ -136,11 +141,13 @@ void onSettingsTFTFlip(lv_event_t *e)
 /* filament */
 void onNozzleUp(lv_event_t *e)
 {
+    if(bambuStatus.nozzle_count){ui_nozzle_details_show();return;}
     lv_msg_send(XTOUCH_COMMAND_EXTRUDE_UP, NULL);
 }
 
 void onNozzleDown(lv_event_t *e)
 {
+    if(bambuStatus.nozzle_count){ui_nozzle_details_show();return;}
     lv_msg_send(XTOUCH_COMMAND_EXTRUDE_DOWN, NULL);
     
 }

@@ -82,7 +82,7 @@
 #define XTOUCH_TEXT_FILAMENT_LOAD_CONFIRM_TW "進料 %s？\n可能加熱噴嘴並移動列印頭"
 #define XTOUCH_TEXT_FILAMENT_UNLOAD_CONFIRM_TW "退料 %s？\n僅退出目前已裝入的耗材"
 #define XTOUCH_TEXT_FILAMENT_SET_TEMP_TW "先設溫度"
-#define XTOUCH_TEXT_FILAMENT_AUTH_ERROR_TW "印表機拒絕控制\n開啟區域網、開發者模式\n錯誤碼 84033543"
-#define XTOUCH_TEXT_FILAMENT_ERROR_TW "耗材操作被拒絕\n錯誤碼 %u"
+#define XTOUCH_TEXT_CONTROL_AUTH_ERROR_TW "錯誤碼 84033543\n建議開啟區域網及開發者模式"
+#define XTOUCH_TEXT_CONTROL_ERROR_TW "控制命令被拒絕\n錯誤碼 %u"
 
 #define XTOUCH_TEXT_UP_TO_DATE_TW "已是最新版本"

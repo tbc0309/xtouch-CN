@@ -3,13 +3,22 @@
 // COMPONENT confirmPanel
 
 void (*ui_confirmPanel_showOnYes)();
+static lv_timer_t *noticeTimer;
+static unsigned confirmationOwner;
+static uint32_t confirmationAt;
+static void notice_timeout(lv_timer_t *timer){noticeTimer=NULL;ui_confirmPanel_hide();lv_timer_del(timer);}
 
 void ui_confirmPanel_NOOP(){};
 
 void ui_confirmPanel_show(const char *title, void (*onYES)(void))
 {
+    if(noticeTimer){lv_timer_del(noticeTimer);noticeTimer=NULL;}
+    lv_obj_clear_flag(ui_comp_get_child(ui_confirmComponent,3),LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(ui_comp_get_child(ui_confirmComponent,5),LV_OBJ_FLAG_HIDDEN);
     ui_confirmPanel_showOnYes = onYES;
+    confirmationOwner=xtouch_printer_active();confirmationAt=lv_tick_get();
 
+    lv_obj_move_foreground(ui_confirmComponent);
     lv_obj_clear_flag(ui_confirmComponent, LV_OBJ_FLAG_HIDDEN); /// Flags
     lv_obj_t *titleLabel = ui_comp_get_child(ui_confirmComponent, UI_COMP_CONFIRMPANEL_CONFIRMPANELCONTAINER_CONFIRMPANELCAPTION);
     lv_label_set_text(titleLabel, title);
@@ -17,8 +26,17 @@ void ui_confirmPanel_show(const char *title, void (*onYES)(void))
     // [](int a){
 }
 
+void ui_notice_show(const char *text,unsigned timeout){
+ if(!lv_obj_has_flag(ui_confirmComponent,LV_OBJ_FLAG_HIDDEN)&&ui_confirmPanel_showOnYes&&ui_confirmPanel_showOnYes!=ui_confirmPanel_NOOP)return;
+ ui_confirmPanel_show(text,ui_confirmPanel_NOOP);lv_obj_add_flag(ui_comp_get_child(ui_confirmComponent,3),LV_OBJ_FLAG_HIDDEN);
+ if(timeout){lv_obj_add_flag(ui_comp_get_child(ui_confirmComponent,5),LV_OBJ_FLAG_HIDDEN);noticeTimer=lv_timer_create(notice_timeout,timeout,NULL);}
+}
+
+void ui_notice_unavailable(void){ui_notice_show(xtouch_local("设备忙或状态已变更", "Device busy or state changed."),0);}
+
 void ui_confirmPanel_hide()
 {
+    if(noticeTimer){lv_timer_del(noticeTimer);noticeTimer=NULL;}
     ui_confirmPanel_showOnYes = NULL;
     lv_obj_add_flag(ui_confirmComponent, LV_OBJ_FLAG_HIDDEN); /// Flags
     // [](int a){
@@ -41,9 +59,13 @@ void ui_event_comp_confirmPanel_confirmPanelYES(lv_event_t *e)
     lv_obj_t **comp_confirmPanel = lv_event_get_user_data(e);
     if (event_code == LV_EVENT_CLICKED)
     {
-        if (ui_confirmPanel_showOnYes) ui_confirmPanel_showOnYes();
+        /* Close this prompt first: its action may open a result/progress prompt. */
+        void (*action)(void)=ui_confirmPanel_showOnYes;
         ui_confirmPanel_hide();
-        ui_confirmPanel_showOnYes = NULL;
+        if(action&&action!=ui_confirmPanel_NOOP&&(confirmationOwner!=xtouch_printer_active()||xtouch_printer_switch_pending()||lv_tick_elaps(confirmationAt)>30000)){
+            ui_notice_unavailable();return;
+        }
+        if(action)action();
     }
 }
 

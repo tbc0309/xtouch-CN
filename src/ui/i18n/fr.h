@@ -79,6 +79,6 @@
 #define XTOUCH_TEXT_FILAMENT_LOAD_CONFIRM_FR "Charger %s ?\nChauffe et mouvement possibles"
 #define XTOUCH_TEXT_FILAMENT_UNLOAD_CONFIRM_FR "Retirer %s ?\nRetrait du filament chargé"
 #define XTOUCH_TEXT_FILAMENT_SET_TEMP_FR "Temp."
-#define XTOUCH_TEXT_FILAMENT_AUTH_ERROR_FR "Commande refusée\nActivez LAN seul + Dév.\nErreur 84033543"
-#define XTOUCH_TEXT_FILAMENT_ERROR_FR "Commande refusée\nErreur %u"
+#define XTOUCH_TEXT_CONTROL_AUTH_ERROR_FR "Erreur 84033543\nEssayez LAN seul + Dév."
+#define XTOUCH_TEXT_CONTROL_ERROR_FR "Commande refusée\nErreur %u"
 #define XTOUCH_TEXT_UP_TO_DATE_FR "Déjà à jour"

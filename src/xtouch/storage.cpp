@@ -1,5 +1,6 @@
 #include "storage.h"
 #include "printers.h"
+#include "profile_schema.h"
 #include <SPIFFS.h>
 #include <SD.h>
 #include <MD5Builder.h>
@@ -48,19 +49,7 @@ bool validPayload(const char *path, JsonDocument &doc) {
     if (!strcmp(path, paths[0])) {
         const char *ssid = doc["ssid"], *pwd = doc["pwd"];
         if (!ssid || !*ssid || strlen(ssid) > 32 || !pwd || strlen(pwd) > 64) return false;
-        if (doc["printers"].is<JsonArray>()) {
-            unsigned usable = 0, slot = 0;
-            for (JsonVariant p : doc["printers"].as<JsonArray>()) {
-                if (slot++ >= XTOUCH_MAX_PRINTERS) return false;
-                if (p.isNull()) continue;
-                const char *host = p["host"], *code = p["accessCode"], *serial = p["serialNumber"];
-                if (!host || !*host || strlen(host) >= 64 || !code || strlen(code) != 8 ||
-                    !serial || !*serial || strlen(serial) >= 32 ||
-                    strlen(p["name"] | "")>=64 || strlen(p["printerModel"] | "")>=32) continue;
-                usable++;
-            }
-            return usable > 0;
-        }
+        if (doc["printers"].is<JsonArray>()) return XTouchSchema::root(doc);
         JsonVariant p = doc["mqtt"];
         const char *host = p["host"], *code = p["accessCode"], *serial = p["serialNumber"];
         return host && *host && strlen(host) < 64 && code && strlen(code) == 8 && serial && *serial && strlen(serial) < 32;
@@ -79,7 +68,7 @@ bool validPayload(const char *path, JsonDocument &doc) {
         doc["chamberTempDiff"].as<int>() < -128 || doc["chamberTempDiff"].as<int>() > 127)) return false;
     if (doc.containsKey("language")) {
         const char *language = doc["language"];
-        if (!language || (strcmp(language,"zh") && strcmp(language,"zh-TW") && strcmp(language,"en") && strcmp(language,"fr") && strcmp(language,"ru") && strcmp(language,"ja"))) return false;
+        if (!language || (strcmp(language,"zh") && strcmp(language,"zh-TW") && strcmp(language,"en") && strcmp(language,"fr") && strcmp(language,"de") && strcmp(language,"ru") && strcmp(language,"ja") && strcmp(language,"ko"))) return false;
     }
     for (const char *key : {"tftInvert", "ota", "wop", "chamberTemp", "auxFan", "chamberFan"})
         if (doc.containsKey(key) && !doc[key].is<bool>()) return false;

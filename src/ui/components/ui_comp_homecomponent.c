@@ -174,6 +174,8 @@ void onXTouchBedTemp(lv_event_t *e)
 
     char value[10];
 
+    unsigned bit=lv_msg_get_id(m)==XTOUCH_ON_BED_TEMP?1:4;
+    if(!(bambuStatus.temperature_valid&bit)){lv_label_set_text(target,"--");return;}
     itoa(message->data, value, 10);
     lv_label_set_text(target, value);
 }
@@ -187,6 +189,11 @@ void onXTouchChamberTemp(lv_event_t *e)
     struct XTOUCH_MESSAGE_DATA *message = (struct XTOUCH_MESSAGE_DATA *)m->payload;
     char value[10];
 
+    if(!xtouch_bblp_chamber_display()){
+        lv_obj_add_flag(lv_obj_get_parent(target),LV_OBJ_FLAG_HIDDEN);lv_label_set_text(target,"--");return;
+    }
+    lv_obj_clear_flag(lv_obj_get_parent(target),LV_OBJ_FLAG_HIDDEN);
+    if(!bambuStatus.chamber_valid){lv_label_set_text(target,"--");return;}
     itoa(message->data, value, 10);
     lv_label_set_text(target, value);
 }
@@ -869,6 +876,7 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_label_set_long_mode(deviceName, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_obj_set_style_anim_speed(deviceName, 25, 0);
     lv_label_set_text(deviceName, xtouch_printer_name());
+    lv_obj_set_style_text_color(deviceName,lv_color_hex(xtouch_printer_source_color(xtouch_printer_active())),0);
 
     lv_obj_t *cui_mainScreenLightButton;
     cui_mainScreenLightButton = lv_obj_create(cui_mainScreenRight);
@@ -1036,7 +1044,7 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_text_color(cui_mainScreenChamberTemp, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(cui_mainScreenChamberTemp, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    if (xtouch_bblp_is_p1Series() && !xTouchConfig.xTouchChamberSensorEnabled)
+    if (!xtouch_bblp_chamber_display())
     {
         lv_obj_add_flag(cui_mainScreenChamberTemp, LV_OBJ_FLAG_HIDDEN);
     }

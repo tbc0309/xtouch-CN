@@ -79,6 +79,6 @@
 #define XTOUCH_TEXT_FILAMENT_LOAD_CONFIRM_RU "Загрузить %s?\nВозможны нагрев и движение"
 #define XTOUCH_TEXT_FILAMENT_UNLOAD_CONFIRM_RU "Извлечь %s?\nУбрать текущий пластик"
 #define XTOUCH_TEXT_FILAMENT_SET_TEMP_RU "Нагрев"
-#define XTOUCH_TEXT_FILAMENT_AUTH_ERROR_RU "Команда отклонена\nВключите LAN и режим разраб.\nКод 84033543"
-#define XTOUCH_TEXT_FILAMENT_ERROR_RU "Команда отклонена\nКод %u"
+#define XTOUCH_TEXT_CONTROL_AUTH_ERROR_RU "Код 84033543\nРекомендуем LAN + режим разраб."
+#define XTOUCH_TEXT_CONTROL_ERROR_RU "Команда отклонена\nКод %u"
 #define XTOUCH_TEXT_UP_TO_DATE_RU "Уже обновлено"

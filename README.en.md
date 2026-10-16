@@ -2,18 +2,19 @@
 
 [简体中文](README.md) | English
 
-A multilingual version of [xTouch](https://github.com/xperiments-in/xtouch) for **2.8-inch, 240×320, ESP32** hardware, providing status monitoring and controls for Bambu Lab printers. Based on upstream `0.9.213`, it uses Tencent W7 for interface text and large numbers. **[Configuration & web installer](https://tbc0309.github.io/xtouch-CN/)**
+A multilingual version of [xTouch](https://github.com/xperiments-in/xtouch) for **2.8-inch, 240×320, ESP32** hardware, providing status monitoring and controls for Bambu Lab printers. Based on upstream `0.9.213`. **[Web installer](https://tbc0309.github.io/xtouch-CN/)**
 
 ## Features
 
-- Six languages: Simplified Chinese, Traditional Chinese, English, French, Russian and Japanese, with W7 interface text and large numbers.
+- Eight languages: Simplified Chinese, Traditional Chinese, English, French, German, Russian, Japanese and Korean.
+- LAN, Bambu account and Access Token connections, QR Wi-Fi setup and independent web management.
 - Printing status, temperature, fans, speed, light and motion controls.
 - Up to 100 printer profiles, custom names and an on-screen device picker; one active connection at a time.
 - Actual AMS filament colors, remaining-percentage alerts, source selection and confirmed load/unload/RFID operations.
 - Internal settings and touch calibration, with SD synchronization and operation without SD after setup.
 - SD and project OTA updates; tap the Settings version three times for a manual check.
 
-Control availability depends on the printer and firmware. See [MQTT capabilities](docs/MQTT-CAPABILITIES.en.md). The font subset covers interface text; external job names may contain unsupported characters. HMS descriptions use the upstream English database.
+Control availability depends on the printer and firmware. See [MQTT capabilities](docs/MQTT-CAPABILITIES.en.md). The font subset covers interface text; external job names may contain unsupported characters. The screen displays fault codes only; see [Error codes](docs/ERROR-CODES.md) for descriptions.
 
 ## Supported CYD board
 
@@ -47,9 +48,11 @@ Screenshots from the 2.8-inch device at its native landscape resolution of 320×
 | --- | --- |
 | ![Device settings](docs/images/en/settings-device.png) | ![Device picker](docs/images/en/printer-picker.png) |
 
-## Download and installation
+## Download and install
 
-Use the **[Configuration & web installer](https://tbc0309.github.io/xtouch-CN/)** to generate configuration, select models and install over USB. The initial language follows the browser: Chinese variants use Chinese; other languages use English. You can switch in the header. See [Web tools](docs/WEB.en.md).
+**[Error code lookup](https://tbc0309.github.io/xtouch-CN/errors.html)**
+
+Use the **[Web installer](https://tbc0309.github.io/xtouch-CN/)** to install the firmware, then scan to join Wi-Fi and add printers in the device portal. The initial language follows the browser: Chinese variants use Chinese; other languages use English. You can switch in the header. See [Web tools](docs/WEB.en.md).
 
 $\color{red}{\text{Original xTouch firmware supports upgrading to xtouch-CN via SD card.}}$
 
@@ -58,21 +61,21 @@ Download from [Releases](https://github.com/tbc0309/xtouch-CN/releases), then ch
 | Situation | Steps |
 | --- | --- |
 | Original xTouch installed | Rename `xtouch-2.8.bin` to `firmware.bin`, put it in the SD root and boot. Keep your configuration and calibration; remove old `xtouch/ota.json` first. |
-| Fresh installation | Open the **[Configuration & web installer](https://tbc0309.github.io/xtouch-CN/)**, select the serial port, install and complete setup below. |
+| Fresh installation | Open the **[Web installer](https://tbc0309.github.io/xtouch-CN/)**, select the serial port, install and complete setup below. |
 | xtouch-CN already installed | Enable OTA and restart, or tap the Settings version three times. SD updates are also supported. |
 
 Use the application image for SD updates, not `xtouch-2.8-full.bin`. Keep power connected during installation. See [Updates and recovery](docs/UPDATING.en.md) for detailed steps.
 
 ### First-time setup
 
-1. Prepare a microSD card. Edit the [configuration example](examples/xtouch.multiple.json), keep only the printers you need, and save it as `/xtouch.json` in the SD root.
-2. Set `ssid` and `pwd` to your Wi-Fi credentials. For each printer, enter `host`, `accessCode`, `serialNumber` and the model code listed below.
-3. Insert the card, boot, complete touch calibration if prompted, and wait for Wi-Fi and printer connection. For printer-side setup, see the [upstream guide](README.upstream.md).
-4. After import, configuration is stored internally and the card can be removed. Settings are saved internally and mirrored to SD when available. See [Storage and backup](docs/STORAGE.en.md).
+1. Calibrate the touchscreen, then scan its QR code to join the device hotspot (password `12345678`).
+2. Open `http://192.168.4.1/` and connect to your 2.4GHz Wi-Fi.
+3. Open **Web management** in Settings and scan its QR code. Sign in with `12345678` and change the management password.
+4. Add LAN printers manually, or sign in/import a cloud Token and select linked printers. Choose **Save & restart**.
 
-Original single-printer configurations are imported automatically with `.bak` backups. Configuration files contain credentials; keep them private.
+SD is optional for normal use. It supports original configuration migration, backup synchronization and offline firmware updates. See [web management](docs/CLOUD-PORTAL.md) and the [Token guide](docs/ACCESS-TOKEN.md).
 
-## Multiple printers
+## Optional legacy SD configuration
 
 Fill in the [example configuration](examples/xtouch.multiple.json), save it as `/xtouch.json` in the SD root, and restart. Wi-Fi settings are shared; `printers` supports up to 100 entries.
 
@@ -113,22 +116,28 @@ These are the firmware’s built-in model mappings, not a list of fully hardware
 
 | Guide | Contents |
 | --- | --- |
-| [Web tools](docs/WEB.en.md) | Configuration generation, import and web installation |
+| [Web tools](docs/WEB.en.md) | Online installation and optional legacy configuration |
+| [Web management](docs/CLOUD-PORTAL.md) | Device and cloud account setup, security and backup |
 | [Hardware](docs/HARDWARE.en.md) | CYD specifications and GPIO pins |
 | [Updates and recovery](docs/UPDATING.en.md) | Original firmware SD upgrade, online installation and OTA |
 | [Storage](docs/STORAGE.en.md) | Internal configuration, SD synchronization and backups |
 | [MQTT capabilities](docs/MQTT-CAPABILITIES.en.md) | Filament controls and compatibility limits |
 | [Printer artwork](docs/PRINTER-MODELS.en.md) | Model recognition, AMS display and image resources |
+| [Firmware size audit](docs/FIRMWARE-SIZE.md) | Size, cleanup and validation scope (Chinese) |
+| [Error codes](docs/ERROR-CODES.md) | Vendor HMS and print error descriptions |
+| [Access Token guide](docs/ACCESS-TOKEN.md) | Retrieve a website session Token and import linked printers |
+| [Prompts and fault dialogs (Chinese)](docs/PROMPTS.md) | Shared messages, combined HMS/print errors and acknowledgement rules |
 | [Development](docs/DEVELOPMENT.en.md) | Build, code structure, languages and fonts |
 
 ## Build from source
 
 ```sh
-python -m pip install platformio
+npm ci --prefix web
+python -m pip install platformio -r scripts/requirements.txt
 python -m platformio run
 ```
 
-Generated fonts are included; a normal build needs neither Node.js nor the original TTF. See [Development](docs/DEVELOPMENT.en.md) for hardware configuration, font generation and release packaging.
+Generated fonts are included; a normal build needs Node.js for the management portal, but not the original TTF. See [Development](docs/DEVELOPMENT.en.md) for hardware configuration, font generation and release packaging.
 
 ## Source and licensing
 

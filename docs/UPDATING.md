@@ -22,7 +22,7 @@ $\color{red}{\text{支持原版 xTouch 固件通过 SD 卡直接升级为本项�
 已使用本项目 OTA 地址的 CN 固件，开启 OTA 后重启即可检查更新。升级保留配置，相同版本不会重复安装。
 ## 网页在线刷写
 
-电脑使用 Chrome 或 Edge 打开 **[配置生成与在线刷写](https://tbc0309.github.io/xtouch-CN/)**。数据线连接 CYD 主板，加载刷写工具，选择对应串口并按提示安装。保留内部配置和校准时不要勾选 **Erase device**。全新安装后准备 SD 配置并完成校准。
+电脑使用 Chrome 或 Edge 打开 **[在线刷写](https://tbc0309.github.io/xtouch-CN/)**。数据线连接 CYD 主板，加载刷写工具，选择对应串口并按提示安装。保留内部配置和校准时不要勾选 **Erase device**。全新安装后完成触摸校准并扫码配网，从网页后台添加设备，无需 SD 卡。
 
 ## 在线 OTA
 

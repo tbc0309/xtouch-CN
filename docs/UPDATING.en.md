@@ -22,7 +22,7 @@ $\color{red}{\text{Original xTouch firmware supports upgrading directly to xtouc
 CN firmware already using this project's OTA source can check for updates by enabling OTA and restarting. Configuration is retained; identical versions are not reinstalled.
 ## Online installation
 
-Open the **[Configuration & web installer](https://tbc0309.github.io/xtouch-CN/)** in desktop Chrome or Edge. Connect the CYD board with a USB data cable, load the installer, select its port and follow the prompts. Leave **Erase device** unchecked to keep internal settings and calibration. After first installation, prepare the SD configuration and complete calibration.
+Open the **[Web installer](https://tbc0309.github.io/xtouch-CN/)** in desktop Chrome or Edge. Connect the CYD board with a USB data cable, load the installer, select its port and follow the prompts. Leave **Erase device** unchecked to keep internal settings and calibration. After first installation, calibrate the touchscreen, scan to join Wi-Fi, and add printers in the device portal. SD is optional.
 
 ## Online OTA
 

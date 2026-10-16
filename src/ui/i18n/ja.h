@@ -79,6 +79,6 @@
 #define XTOUCH_TEXT_FILAMENT_LOAD_CONFIRM_JA "%s を挿入しますか？\n加熱とヘッド移動があります"
 #define XTOUCH_TEXT_FILAMENT_UNLOAD_CONFIRM_JA "%s を取出しますか？\n現在のフィラメントを戻します"
 #define XTOUCH_TEXT_FILAMENT_SET_TEMP_JA "温度設定"
-#define XTOUCH_TEXT_FILAMENT_AUTH_ERROR_JA "制御が拒否されました\nLAN専用・開発者モードを有効に\nエラー 84033543"
-#define XTOUCH_TEXT_FILAMENT_ERROR_JA "操作が拒否されました\nエラー %u"
+#define XTOUCH_TEXT_CONTROL_AUTH_ERROR_JA "エラー 84033543\nLAN専用・開発者モードを推奨"
+#define XTOUCH_TEXT_CONTROL_ERROR_JA "操作が拒否されました\nエラー %u"
 #define XTOUCH_TEXT_UP_TO_DATE_JA "最新バージョンです"

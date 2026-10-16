@@ -1,3 +1,6 @@
+#include "ui/nozzle_details.h"
+#include "ui/ams_details.h"
+#include "ams_units.h"
 #ifndef _XLCD_DEVICE
 #define _XLCD_DEVICE
 
@@ -52,11 +55,39 @@ void xtouch_device_set_print_state(String state)
     lastPrintState = state;
 }
 
-void xtouch_device_publish(String request)
+// Track a short burst (for example two fan commands) rather than losing the
+// first rejection as soon as a second request is sent. Never cross profiles.
+static struct { uint32_t sequence, sent; unsigned printer; bool used; char command[32]; } xtouch_controls[8];
+static unsigned xtouch_control_cursor;
+void xtouch_device_control_clear(){for(auto &entry:xtouch_controls)entry.used=false;xtouch_control_cursor=0;}
+bool xtouch_device_publish(String request)
 {
-    if (xtouch_printer_switch_pending() || !xtouch_pubSubClient.connected()) return;
-    xtouch_pubSubClient.publish(xtouch_mqtt_request_topic.c_str(), request.c_str());
+    if (xtouch_printer_switch_pending() || !xtouch_pubSubClient.connected()) return false;
+    bool sent=xtouch_pubSubClient.publish(xtouch_mqtt_request_topic.c_str(), request.c_str());
+    if(sent&&(request.indexOf("\"print\"")>=0||request.indexOf("\"system\"")>=0)){StaticJsonDocument<512> d;if(!deserializeJson(d,request)){
+      JsonObjectConst p=d.containsKey("print")?d["print"].as<JsonObjectConst>():d["system"].as<JsonObjectConst>();
+      auto &entry=xtouch_controls[xtouch_control_cursor++%8];
+      entry.sequence=p["sequence_id"].as<String>().toInt();entry.sent=millis();entry.printer=xtouch_printer_active();entry.used=true;strlcpy(entry.command,p["command"]|"",sizeof(entry.command));
+    }}
     delay(10);
+    return sent;
+}
+
+bool xtouch_device_scoped_command(const char *name){
+ static const char *const commands[]={"ams_get_rfid","ams_change_filament","ams_filament_drying","set_nozzle_temp","select_extruder","set_extrusion_length","holder_nozzle_refresh","nozzle_info_confirm","nozzle_holder_ctrl","set_ctt"};
+ for(const char *command:commands)if(!strcmp(name,command))return true;return false;
+}
+void xtouch_device_control_reply(JsonObjectConst report){
+ String sequence=report["sequence_id"].as<String>();
+ if(!sequence.length())return;
+ char *end=NULL;uint32_t id=strtoul(sequence.c_str(),&end,10);
+ if(!end||*end)return;
+ for(auto &entry:xtouch_controls)if(entry.used&&entry.sequence==id&&!strcmp(entry.command,report["command"]|"")&&entry.printer==xtouch_printer_active()&&millis()-entry.sent<15000){
+  entry.used=false;const char *command=report["command"]|"";uint32_t error=report["err_code"]|0UL;
+  if(!error&&strcmp(report["result"]|"success","success"))error=1;
+  if(error&&!xtouch_device_scoped_command(command))ui_filament_report_error(error);
+  break;
+ }
 }
 
 void xtouch_device_get_version()
@@ -110,8 +141,9 @@ void xtouch_device_gcode_line(String line)
 
 void xtouch_device_move_axis(String axis, double value, int speed)
 {
+    if(!ui_manual_motion_allowed())return;
     char cmd[256];
-    sprintf(cmd, "M211 S \nM211 X1 Y1 Z1\nM1002 push_ref_mode\nG91 \nG1 %s%0.1f F%d\nM1002 pop_ref_mode\nM211 R\n", axis.c_str(), value, speed);
+    snprintf(cmd, sizeof(cmd), "M211 S \nM211 X1 Y1 Z1\nM1002 push_ref_mode\nG91 \nG1 %s%0.1f F%d\nM1002 pop_ref_mode\nM211 R\n", axis.c_str(), value, speed);
     xtouch_device_gcode_line(String(cmd));
 }
 
@@ -137,6 +169,7 @@ void xtouch_device_onLightToggleCommand(lv_msg_t *m)
 
 void xtouch_device_onHomeCommand(lv_msg_t *m)
 {
+    if(!ui_manual_motion_allowed())return;
     xtouch_device_gcode_line("G28 \n");
 }
 
@@ -173,6 +206,7 @@ void xtouch_device_onBedTargetTempCommand(lv_msg_t *m)
 
 void xtouch_device_onNozzleTargetCommand(lv_msg_t *m)
 {
+    if(bambuStatus.nozzle_count)return;
     bambuStatus.nozzle_target_temper = controlMode.target_nozzle_temper;
     xtouch_device_gcode_line("M104 S" + String(controlMode.target_nozzle_temper) + "\n");
     xtouch_device_pushall();
@@ -180,6 +214,7 @@ void xtouch_device_onNozzleTargetCommand(lv_msg_t *m)
 
 void xtouch_device_onPartSpeedCommand(lv_msg_t *m)
 {
+    if(!xtouch_bblp_fan_supported(0))return;
     xtouch_device_gcode_line("M106 P1 S" + String(bambuStatus.cooling_fan_speed) + " \n");
     delay(10);
     xtouch_device_pushall();
@@ -187,6 +222,7 @@ void xtouch_device_onPartSpeedCommand(lv_msg_t *m)
 
 void xtouch_device_onAuxSpeedCommand(lv_msg_t *m)
 {
+    if(!xtouch_bblp_fan_supported(1))return;
     xtouch_device_gcode_line("M106 P2 S" + String(bambuStatus.big_fan1_speed) + "\n");
     delay(10);
     xtouch_device_pushall();
@@ -194,6 +230,7 @@ void xtouch_device_onAuxSpeedCommand(lv_msg_t *m)
 
 void xtouch_device_onChamberSpeedCommand(lv_msg_t *m)
 {
+    if(!xtouch_bblp_fan_supported(2))return;
     xtouch_device_gcode_line("M106 P3 S" + String(bambuStatus.big_fan2_speed) + "\n");
     delay(10);
     xtouch_device_pushall();
@@ -234,6 +271,7 @@ void xtouch_device_onResumeCommand(lv_msg_t *m)
 
 void xtouch_device_onNozzleUp(lv_msg_t *m)
 {
+    if(bambuStatus.nozzle_count)return;
     xtouch_device_gcode_line("M83 \nG0 E-10.0 F900\n");
     delay(10);
     xtouch_device_pushall();
@@ -241,6 +279,7 @@ void xtouch_device_onNozzleUp(lv_msg_t *m)
 
 void xtouch_device_onNozzleDown(lv_msg_t *m)
 {
+    if(bambuStatus.nozzle_count)return;
     xtouch_device_gcode_line("M83 \nG0 E10.0 F900\n");
     delay(10);
     xtouch_device_pushall();
@@ -251,32 +290,56 @@ void xtouch_device_onNozzleDown(lv_msg_t *m)
 static String xtouch_filament_pending_sequence;
 static unsigned xtouch_filament_pending_printer;
 static unsigned long xtouch_filament_sent_at;
+bool xtouch_command_pending(void){return xtouch_filament_pending_sequence.length()!=0;}
 String xtouch_device_filament_command(const struct ui_filament_request &request,
     const String &sequence=xtouch_device_next_sequence())
 {
     StaticJsonDocument<384> json;
     JsonObject command = json.createNestedObject("print");
     command["sequence_id"] = sequence;
-    command["ams_id"] = request.tray == 254 ? 254 : request.tray / 4;
-    command["slot_id"] = request.tray == 254 ? 0 : request.tray % 4;
+    command["ams_id"] = request.tray==253?254:request.tray==254?(bambuStatus.external_multi_protocol?255:254):xtouch_ams_protocol_id(request.tray/4);
+    command["slot_id"] = request.tray==254||request.tray==253?0:request.tray%4;
+    if(bambuStatus.nozzle_count&&request.action!=UI_FILAMENT_REREAD)command["extruder_id"]=ui_filament_extruder(request.tray);
     if (request.action == UI_FILAMENT_REREAD) {
         command["command"] = "ams_get_rfid";
     } else {
         command["command"] = "ams_change_filament";
         int target=ui_filament_temperature(request.tray);
-        int current=ui_filament_temperature(bambuStatus.m_tray_now);
+        int current=ui_filament_temperature(ui_filament_current(request.tray));
         /* Studio defaults to 210 C for an unload without material metadata. */
         command["curr_temp"] = current ? current : (target ? target : 210);
         command["tar_temp"] = target ? target : 210;
-        command["target"] = request.action == UI_FILAMENT_UNLOAD ? 255 : request.tray;
+        command["target"] = request.action==UI_FILAMENT_UNLOAD?255:request.tray>=253?command["ams_id"].as<int>():request.tray/4>=4?xtouch_ams_protocol_id(request.tray/4):xtouch_ams_protocol_tray(request.tray);
         if (request.action == UI_FILAMENT_UNLOAD) command["slot_id"] = 255;
     }
     String result; serializeJson(json,result);
     return result;
 }
+void xtouch_device_onIndexedNozzle(void *,lv_msg_t *message){
+ if(!message||!message->payload||xtouch_filament_pending_sequence.length())return;
+ const ui_nozzle_request &r=*static_cast<const ui_nozzle_request*>(message->payload);if(!ui_nozzle_request_allowed(&r))return;
+ StaticJsonDocument<256> doc;JsonObject p=doc.createNestedObject("print");xtouch_filament_pending_sequence=xtouch_device_next_sequence();xtouch_filament_pending_printer=r.printer;xtouch_filament_sent_at=millis();
+ p["sequence_id"]=xtouch_filament_pending_sequence;
+ if(r.action==9){p["command"]="set_ctt";p["ctt_val"]=r.target;}
+ else if(r.action==0){p["command"]="set_nozzle_temp";p["extruder_index"]=r.index;p["target_temp"]=r.target;}
+ else if(r.action==1){p["command"]="select_extruder";p["extruder_index"]=r.index;}
+ else if(r.action==2||r.action==3){p["command"]="set_extrusion_length";p["extruder_index"]=r.index;p["length"]=r.action==2?10:-10;}
+ else if(r.action==4||r.action==5){p["command"]=r.action==4?"holder_nozzle_refresh":"nozzle_info_confirm";p["id"]=r.target==255?255:r.target+16;}
+ else {p["command"]="nozzle_holder_ctrl";p["action"]=r.action==6?0:r.action==7?1:2;}
+ String result;serializeJson(doc,result);if(!xtouch_device_publish(result)){xtouch_filament_pending_sequence="";ui_filament_report_error(1);return;}ui_filament_report_status(0);
+}
+void xtouch_device_onAmsDry(void *,lv_msg_t *message){
+ if(!message||!message->payload||xtouch_filament_pending_sequence.length())return;
+ const ui_dry_request &r=*static_cast<const ui_dry_request*>(message->payload);if(!ui_ams_dry_allowed(&r))return;
+ StaticJsonDocument<512> doc;JsonObject p=doc.createNestedObject("print");
+ xtouch_filament_pending_sequence=xtouch_device_next_sequence();xtouch_filament_pending_printer=r.printer;xtouch_filament_sent_at=millis();
+ p["sequence_id"]=xtouch_filament_pending_sequence;p["command"]="ams_filament_drying";p["ams_id"]=xtouch_ams_protocol_id(r.unit);
+ p["mode"]=r.stop?0:1;p["temp"]=r.stop?0:r.temp;p["duration"]=r.stop?0:r.hours;p["humidity"]=0;p["rotate_tray"]=false;p["cooling_temp"]=r.stop?0:40;p["filament"]="";p["close_power_conflict"]=false;
+ String result;serializeJson(doc,result);if(!xtouch_device_publish(result)){xtouch_filament_pending_sequence="";ui_filament_report_error(1);return;}ui_filament_report_status(0);
+}
 void xtouch_device_onFilamentAction(void *subscription, lv_msg_t *message)
 {
-    if (!message || !message->payload) return;
+    if (!message || !message->payload || xtouch_filament_pending_sequence.length()) return;
     const struct ui_filament_request &request = *static_cast<const struct ui_filament_request *>(message->payload);
     if (request.printer != xtouch_printer_active() || request.tray != ui_filament_selected() ||
         !ui_filament_allowed(request.action,request.tray)) return;
@@ -286,7 +349,16 @@ void xtouch_device_onFilamentAction(void *subscription, lv_msg_t *message)
     xtouch_filament_pending_sequence=xtouch_device_next_sequence();
     xtouch_filament_pending_printer=request.printer;
     xtouch_filament_sent_at=millis();
-    xtouch_device_publish(xtouch_device_filament_command(request,xtouch_filament_pending_sequence));
+    if(!xtouch_device_publish(xtouch_device_filament_command(request,xtouch_filament_pending_sequence))){
+        xtouch_filament_pending_sequence="";ui_filament_report_error(1);return;
+    }
+    ui_filament_report_status(0);
+}
+
+void xtouch_device_filament_poll(){
+ if(xtouch_filament_pending_sequence.length()&&millis()-xtouch_filament_sent_at>15000){
+  xtouch_filament_pending_sequence="";if(xtouch_filament_pending_printer==xtouch_printer_active())ui_filament_report_status(2);
+ }
 }
 
 void xtouch_device_filament_reply(JsonObjectConst report)
@@ -298,7 +370,8 @@ void xtouch_device_filament_reply(JsonObjectConst report)
     if (report["sequence_id"].as<String>()!=xtouch_filament_pending_sequence) return;
     xtouch_filament_pending_sequence="";
     uint32_t error=report["err_code"] | 0UL;
-    if (error) ui_filament_report_error(error);
+    if(!error&&strcmp(report["result"]|"success","success"))error=1;
+    if (error) ui_filament_report_error(error);else ui_filament_report_status(1);
 }
 
 void xtouch_device_command_ams_control(void *s, lv_msg_t *m)
@@ -339,20 +412,5 @@ void xtouch_device_command_clean_print_error(void *s, lv_msg_t *m)
     }
 }
 
-// void xtouch_device_command_getPaCalibration()
-// {
-
-//     Serial.println("getPaCalibration");
-//     DynamicJsonDocument doc(1024);
-//     doc["print"]["command"] = "extrusion_cali_get";
-//     doc["print"]["sequence_id"] = "456";
-//     doc["print"]["filament_id"] = "";
-//     doc["print"]["nozzle_diameter"] = "0.4";
-
-//     // {"print":{"command":"extrusion_cali_get","filament_id":"","nozzle_diameter":"0.4","sequence_id":"20313","filaments":[],"reason":"success","result":"success"}}
-//     String result;
-//     serializeJson(doc, result);
-//     xtouch_device_publish(result);
-// }
 
 #endif

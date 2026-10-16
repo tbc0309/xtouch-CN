@@ -329,9 +329,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## Noto fallback glyphs
-
-The generated `ui_font_noto_14.c` subset comes from [Noto Sans CJK](https://github.com/notofonts/noto-cjk). It supplies interface characters missing from Tencent W7. Noto is distributed under the SIL Open Font License 1.1; see [OFL-Noto.txt](resources/fonts/OFL-Noto.txt). Source font files are not included.
 # Web installer
 
-The optional static website in `web/` uses [ESP Web Tools](https://github.com/esphome/esp-web-tools), licensed under Apache-2.0. It is bundled from the pinned npm package during website deployment. Its license is copied into the generated site's `licenses/esp-web-tools/` directory; bundled dependency notices are retained in generated JavaScript. esbuild is a build-time dependency licensed under MIT. These web dependencies are separate from the ESP32 firmware.
+The optional static website in `web/` uses [ESP Web Tools](https://github.com/esphome/esp-web-tools), licensed under Apache-2.0. It is bundled from the pinned npm package during website deployment. Its license is copied into the generated site's `licenses/esp-web-tools/` directory; bundled dependency notices are retained in generated JavaScript. esbuild is a build-time dependency licensed under MIT. ESP Web Tools runs in the browser. esbuild also minifies the firmware management portal during builds.

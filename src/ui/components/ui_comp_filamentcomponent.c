@@ -11,6 +11,7 @@ void ui_event_comp_filamentComponent_onNozzleTemp(lv_event_t *e)
     struct XTOUCH_MESSAGE_DATA *message = (struct XTOUCH_MESSAGE_DATA *)m->payload;
 
     char value[10];
+    if(!(bambuStatus.temperature_valid&4)){lv_label_set_text(target,"--");return;}
     itoa(message->data, value, 10);
     lv_label_set_text(target, value);
     lv_obj_set_style_text_color(target, message->data < 170 ? lv_color_hex(0x39a1fd) : lv_color_hex(0xfaa61e), LV_PART_MAIN | LV_STATE_DEFAULT);

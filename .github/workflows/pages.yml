@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['web/**', 'scripts/build_web.py', 'ota.json', 'version.json', '.github/workflows/pages.yml']
+    paths: ['web/**', 'scripts/build_web.py', 'scripts/build_error_search.py', 'docs/data/error-codes.json', 'ota.json', 'version.json', '.github/workflows/pages.yml']
   release:
     types: [published]
 permissions:
@@ -14,7 +14,20 @@ concurrency:
   group: pages
   cancel-in-progress: false
 jobs:
+  release-deploy:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Deploy the released version from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run pages.yml --ref main
   deploy:
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

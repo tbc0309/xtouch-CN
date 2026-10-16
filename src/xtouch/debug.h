@@ -3,17 +3,17 @@
 
 #define XTOUCH_DEBUG_LOG true
 #define XTOUCH_DEBUG_INFO true
-#define XTOUCH_DEBUG_DEBUG true
-#define XTOUCH_DEBUG_ERROR XTOUCH_DEBUG_LOG || XTOUCH_DEBUG_INFO || XTOUCH_DEBUG_DEBUG
+#define XTOUCH_DEBUG_DEBUG false
+#define XTOUCH_DEBUG_ERROR true
 
 #define ConsoleLog                                                                         \
-    if (XTOUCH_DEBUG_LOG || XTOUCH_DEBUG_INFO || XTOUCH_DEBUG_DEBUG || XTOUCH_DEBUG_ERROR) \
+    if (XTOUCH_DEBUG_LOG) \
     Serial
 #define ConsoleInfo                                                    \
-    if (XTOUCH_DEBUG_INFO || XTOUCH_DEBUG_DEBUG || XTOUCH_DEBUG_ERROR) \
+    if (XTOUCH_DEBUG_INFO) \
     Serial
 #define ConsoleDebug                              \
-    if (XTOUCH_DEBUG_DEBUG || XTOUCH_DEBUG_ERROR) \
+    if (XTOUCH_DEBUG_DEBUG) \
     Serial
 #define ConsoleError        \
     if (XTOUCH_DEBUG_ERROR) \

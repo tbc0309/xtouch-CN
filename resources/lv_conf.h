@@ -235,8 +235,8 @@
 #define LV_USE_ASSERT_OBJ           0   /*Check the object's type and existence (e.g. not deleted). (Slow)*/
 
 /*Add a custom handler when assert happens e.g. to restart the MCU*/
-#define LV_ASSERT_HANDLER_INCLUDE <stdint.h>
-#define LV_ASSERT_HANDLER while(1);   /*Halt by default*/
+#define LV_ASSERT_HANDLER_INCLUDE <stdlib.h>
+#define LV_ASSERT_HANDLER abort();   /*Report a backtrace instead of hanging forever.*/
 
 /*-------------
  * Others
@@ -364,6 +364,8 @@
 
 /*Always set a default font*/
 #define LV_FONT_DEFAULT &ui_font_tencent_w7_14
+/* Unknown filename glyphs use LVGL outline boxes, never a substituted question mark. */
+#define LV_USE_FONT_PLACEHOLDER 1
 /* Large numeric readouts; icon controls retain their dedicated fonts. */
 #define XTOUCH_FONT_NUMERIC &ui_font_tencent_w7_28
 
@@ -618,7 +620,7 @@
 #define LV_USE_GIF 0
 
 /*QR code library*/
-#define LV_USE_QRCODE 0
+#define LV_USE_QRCODE 1
 
 /*FreeType library*/
 #define LV_USE_FREETYPE 0

@@ -27,7 +27,7 @@ Before you begin the installation process, make sure you have the following hard
 
 ### Step 1: Sensor Pinout and Connection
 
-![DS18B20 Sensor Pinout and Connection](/readme-assets/DS18B20_pinout.png)
+![DS18B20 Sensor Pinout and Connection](../readme-assets/DS18B20_pinout.png)
 
 Please refer to the provided image for the DS18B20 sensor's pinout and connection details. Connect the sensor to the xtouch Screen following these guidelines.
 
