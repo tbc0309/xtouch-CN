@@ -89,6 +89,9 @@ void ui_ams_strip_bind(lv_obj_t *strip)
     lv_obj_set_style_border_width(external,1,0);lv_obj_set_style_border_color(external,lv_color_hex(0xAAAAAA),0);
     lv_obj_clear_flag(external,LV_OBJ_FLAG_CLICKABLE|LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *second=lv_obj_create(strip);lv_obj_remove_style_all(second);lv_obj_set_size(second,16,16);lv_obj_set_style_bg_opa(second,LV_OPA_COVER,0);lv_obj_set_style_radius(second,3,0);lv_obj_set_style_border_width(second,1,0);lv_obj_set_style_border_color(second,lv_color_hex(0xAAAAAA),0);lv_obj_clear_flag(second,LV_OBJ_FLAG_CLICKABLE|LV_OBJ_FLAG_SCROLLABLE);
+    /* Physical square swatches for every display aspect ratio. */
+    const unsigned swatches[]={1,2,3,4,6,7};
+    for(unsigned i=0;i<sizeof(swatches)/sizeof(swatches[0]);i++)ui_layout_square(lv_obj_get_child(strip,swatches[i]),16);
     lv_obj_set_style_pad_column(strip,2,0);
     lv_obj_set_flex_align(strip,LV_FLEX_ALIGN_START,LV_FLEX_ALIGN_CENTER,LV_FLEX_ALIGN_CENTER);
     refresh_strip(strip);

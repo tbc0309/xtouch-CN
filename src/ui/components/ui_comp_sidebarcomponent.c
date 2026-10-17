@@ -169,6 +169,7 @@ lv_obj_t *ui_sidebarComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_scrollbar_mode(cui_sidebarTempButtonIcon, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_text_font(cui_sidebarTempButtonIcon, &ui_font_xlcd, LV_PART_MAIN | LV_STATE_DEFAULT);
 
+
     lv_obj_t *cui_sidebarControlButton;
     cui_sidebarControlButton = lv_obj_create(cui_sidebarComponent);
     lv_obj_set_width(cui_sidebarControlButton, lv_pct(100));
@@ -277,6 +278,9 @@ lv_obj_t *ui_sidebarComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_scrollbar_mode(cui_sidebarSettingsButtonIcon, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_text_font(cui_sidebarSettingsButtonIcon, &ui_font_xlcd, LV_PART_MAIN | LV_STATE_DEFAULT);
 
+    lv_obj_t *icons[]={cui_sidebarHomeButtonIcon,cui_sidebarTempButtonIcon,cui_sidebarControlButtonIcon,cui_sidebarNozzleButtonIcon,cui_sidebarSettingsButtonIcon};
+    const char *symbols[]={"a","b","c","n","d"};
+    for(unsigned i=0;i<5;i++)ui_layout_center_icon(icons[i],&ui_font_xlcd,symbols[i]);
     lv_obj_t **children = lv_mem_alloc(sizeof(lv_obj_t *) * _UI_COMP_SIDEBARCOMPONENT_NUM);
     children[UI_COMP_SIDEBARCOMPONENT_SIDEBARCOMPONENT] = cui_sidebarComponent;
     children[UI_COMP_SIDEBARCOMPONENT_SIDEBARHOMEBUTTON] = cui_sidebarHomeButton;

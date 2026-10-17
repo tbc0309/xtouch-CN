@@ -597,3 +597,5 @@ button, label, .deviceDetail { min-width: 0; overflow-wrap: anywhere; }
 .accountTools button,.methodTabs button,.accountBody .toolbar button,.badge { white-space:nowrap; }
 
 .tokenHelp { font-size: 12px; white-space: nowrap; }
+
+#accountActions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}

@@ -1,3 +1,4 @@
+#include "../src/ui/ui_profile.h"
 /**
  * @file lv_conf.h
  * Configuration file for v8.3.0-dev
@@ -49,12 +50,17 @@
 #define LV_MEM_CUSTOM 0
 #if LV_MEM_CUSTOM == 0
     /*Size of the memory available for `lv_mem_alloc()` in bytes (>= 2kB)*/
-    #define LV_MEM_SIZE (28U * 1024U)          /*[bytes]*/
+    #define LV_MEM_SIZE XTOUCH_UI_LVGL_BYTES
+
 
     /*Set an address for the memory pool instead of allocating it as a normal array. Can be in external SRAM too.*/
     #define LV_MEM_ADR 0     /*0: unused*/
     /*Instead of an address give a memory allocator that will be called to get a memory pool for LVGL. E.g. my_malloc*/
     #if LV_MEM_ADR == 0
+        #ifdef XTOUCH_WAVESHARE
+        #define LV_MEM_POOL_INCLUDE "esp_heap_caps.h"
+        #define LV_MEM_POOL_ALLOC(size) heap_caps_malloc((size), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+        #endif
         //#define LV_MEM_POOL_INCLUDE your_alloc_library  /* Uncomment if using an external allocator*/
         //#define LV_MEM_POOL_ALLOC   your_alloc          /* Uncomment if using an external allocator*/
     #endif
@@ -87,8 +93,13 @@
  *It removes the need to manually update the tick with `lv_tick_inc()`)*/
 #define LV_TICK_CUSTOM 1
 #if LV_TICK_CUSTOM
+    #ifdef XTOUCH_WAVESHARE
+    #define LV_TICK_CUSTOM_INCLUDE "esp_timer.h"
+    #define LV_TICK_CUSTOM_SYS_TIME_EXPR ((uint32_t)(esp_timer_get_time() / 1000))
+    #else
     #define LV_TICK_CUSTOM_INCLUDE "Arduino.h"         /*Header for the system time function*/
     #define LV_TICK_CUSTOM_SYS_TIME_EXPR (millis())    /*Expression evaluating to current system time in ms*/
+    #endif
 #endif   /*LV_TICK_CUSTOM*/
 
 /*Default Dot Per Inch. Used to initialize default sizes such as widgets sized, style paddings.
@@ -372,7 +383,11 @@
 /*Enable handling large font and/or fonts with a lot of characters.
  *The limit depends on the font size, font face and bpp.
  *Compiler error will be triggered if a font needs it.*/
+#if defined(XTOUCH_UI_HIDPI_ASSETS) && XTOUCH_UI_HIDPI_ASSETS
+#define LV_FONT_FMT_TXT_LARGE 1
+#else
 #define LV_FONT_FMT_TXT_LARGE 0
+#endif
 
 /*Enables/disables support for compressed fonts.*/
 #define LV_USE_FONT_COMPRESSED 1
@@ -683,7 +698,7 @@
 #define LV_DEMO_WIDGETS_SLIDESHOW  1
 #endif
 
-/*Demonstrate the usage of encoder and keyboard*0
+/*Demonstrate the usage of encoder and keyboard*/
 #define LV_USE_DEMO_KEYPAD_AND_ENCODER     1
 
 /*Benchmark your system*/

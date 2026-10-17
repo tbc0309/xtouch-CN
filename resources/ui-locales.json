@@ -135,7 +135,7 @@
     "Read selected\nRead all\nConfirm selected\nConfirm all\nHome rack\nRaise A\nRaise B",
     "Lire la sélection\nTout lire\nConfirmer la sélection\nTout confirmer\nOrigine du magasin\nLever A\nLever B",
     "Auswahl lesen\nAlle lesen\nAuswahl bestätigen\nAlle bestätigen\nMagazin referenzieren\nA anheben\nB anheben",
-    "Прочитать выбранный\nПрочитать все\nПодтвердить выбранный\nПодтвердить все\nПарковка магазина\nПоднять A\nПоднять B",
+    "Прочитать выбранный\nПрочитать все\nПодтвердить выбранный\nПодтвердить все\nИсходное положение магазина\nПоднять A\nПоднять B",
     "選択を読込\nすべて読込\n選択を確認\nすべて確認\nラック原点復帰\nA を上昇\nB を上昇",
     "선택 항목 읽기\n모두 읽기\n선택 항목 확인\n모두 확인\n랙 원점 복귀\nA 올리기\nB 올리기"
   ],
@@ -235,7 +235,7 @@
     "Home axes? Toolhead will move.",
     "Origine des axes ? La tête va bouger.",
     "Achsen referenzieren? Druckkopf bewegt sich.",
-    "Выполнить парковку? Головка будет двигаться.",
+    "Вернуть оси в исходное положение? Головка будет двигаться.",
     "原点復帰しますか？ヘッドが動きます。",
     "원점 복귀할까요? 헤드가 움직입니다."
   ],
@@ -455,7 +455,7 @@
     "Scan to join Wi-Fi",
     "Scanner pour le Wi-Fi",
     "Für Wi-Fi scannen",
-    "Подключение Wi-Fi",
+    "Сканируйте для Wi-Fi",
     "スキャンして Wi-Fi 設定",
     "스캔하여 Wi-Fi 설정"
   ],
@@ -465,8 +465,38 @@
     "Scan to manage",
     "Scanner pour gérer",
     "Zur Verwaltung scannen",
-    "Веб-управление",
+    "Сканируйте для управления",
     "スキャンして管理",
     "스캔하여 관리"
+  ],
+  "Close": [
+    "关闭",
+    "關閉",
+    "Close",
+    "Fermer",
+    "Schließen",
+    "Закрыть",
+    "閉じる",
+    "닫기"
+  ],
+  "Control request rejected.": [
+    "控制请求被拒绝",
+    "控制請求被拒絕",
+    "Control request rejected.",
+    "Requête de commande refusée.",
+    "Steueranfrage abgelehnt.",
+    "Запрос управления отклонён.",
+    "操作要求が拒否されました。",
+    "제어 요청이 거부되었습니다."
+  ],
+  "Request could not be sent. Check the connection.": [
+    "控制请求发送失败，请检查连接",
+    "控制請求傳送失敗，請檢查連線",
+    "Request could not be sent. Check the connection.",
+    "Envoi impossible. Vérifiez la connexion.",
+    "Senden fehlgeschlagen. Verbindung prüfen.",
+    "Не удалось отправить запрос. Проверьте соединение.",
+    "操作要求を送信できません。接続を確認してください。",
+    "제어 요청을 보내지 못했습니다. 연결을 확인하세요."
   ]
 }

@@ -4,20 +4,30 @@
 #include "cloud.h"
 #include "vault.h"
 #include <Update.h>
+#include "firmware_target.h"
 #include "printers.h"
 #include "ui/i18n/language.h"
 #include <Arduino.h>
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include <XTouchWebServer.h>
 #include <DNSServer.h>
 #include <SPIFFS.h>
 #include <lvgl.h>
 #include <esp_system.h>
+#include <esp_idf_version.h>
+#if ESP_IDF_VERSION_MAJOR >= 6
+#include <psa/crypto.h>
+#else
 #include <mbedtls/md.h>
 #include <mbedtls/pkcs5.h>
+#endif
 #include "portal_assets.h"
+#if defined(XTOUCH_UI_NATIVE_CANVAS) && XTOUCH_UI_NATIVE_CANVAS
+#include "display_scale.h"
+#endif
 
-extern "C" { LV_FONT_DECLARE(ui_font_portal_title_22); void ui_confirmPanel_show(const char*,void(*)(void)); void loadScreen(int); extern lv_obj_t *introScreen; extern lv_obj_t *introScreenCaption; extern lv_obj_t *introScreenIcon; }
+extern "C" { LV_FONT_DECLARE(ui_font_portal_title_22); void ui_confirmPanel_show(const char*,void(*)(void)); void ui_confirmPanel_show_danger(const char*,void(*)(void)); void loadScreen(int); extern lv_obj_t *introScreen; extern lv_obj_t *introScreenCaption; extern lv_obj_t *introScreenIcon; }
 extern void xtouch_portal_release_transport();
 namespace {
 XTouchWebServer server(80);DNSServer dns;
@@ -26,6 +36,7 @@ bool mustChange=true,apMode=false,qrActive=false;
 int showRequest=0;uint32_t rebootAt=0,sessionTouched=0,lockedUntil=0,cloudNext=0,codeNext=0,connectAt=0,scanAt=0;unsigned failures=0;
 String scanCache="[]";bool scanning=false;
 bool uploading=false,uploadOk=false,uploadDenied=false;unsigned uploadFiles=0;String uploadError,accountTarget;
+
 struct AccountHealth{String id;int state=0;bool renewed=false;};
 AccountHealth health[4];unsigned healthCount=0,healthIndex=0;bool background=false,renewing=false;uint32_t checkAt=20000,nextSweep=21600000;String manualAccount;
 void inspectResult(JsonVariantConst result,const String &id){
@@ -37,10 +48,23 @@ void inspectResult(JsonVariantConst result,const String &id){
 String binding(JsonVariantConst a){return String(a["id"]|"")+":"+(a["region"]|"cn")+":"+(a["account"]|"");}
 String randomHex(unsigned bytes=16) {String out;out.reserve(bytes*2);for(unsigned i=0;i<bytes;++i){char b[3];snprintf(b,sizeof(b),"%02x",(uint8_t)esp_random());out+=b;}return out;}
 String passwordHash(const String &password,const String &salt) {
- uint8_t result[32];mbedtls_md_context_t context;mbedtls_md_init(&context);
+ uint8_t result[32];
+#if ESP_IDF_VERSION_MAJOR >= 6
+ psa_key_derivation_operation_t operation=PSA_KEY_DERIVATION_OPERATION_INIT;
+ int rc=psa_crypto_init();
+ if(!rc)rc=psa_key_derivation_setup(&operation,PSA_ALG_PBKDF2_HMAC(PSA_ALG_SHA_256));
+ if(!rc)rc=psa_key_derivation_input_integer(&operation,PSA_KEY_DERIVATION_INPUT_COST,10000);
+ if(!rc)rc=psa_key_derivation_input_bytes(&operation,PSA_KEY_DERIVATION_INPUT_SALT,(const uint8_t*)salt.c_str(),salt.length());
+ if(!rc)rc=psa_key_derivation_input_bytes(&operation,PSA_KEY_DERIVATION_INPUT_PASSWORD,(const uint8_t*)password.c_str(),password.length());
+ if(!rc)rc=psa_key_derivation_output_bytes(&operation,result,sizeof(result));
+ psa_key_derivation_abort(&operation);
+#else
+ mbedtls_md_context_t context;mbedtls_md_init(&context);
  if(mbedtls_md_setup(&context,mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),1))return "";
  int rc=mbedtls_pkcs5_pbkdf2_hmac(&context,(const unsigned char *)password.c_str(),password.length(),(const unsigned char *)salt.c_str(),salt.length(),10000,sizeof(result),result);
- mbedtls_md_free(&context);if(rc)return "";String out;out.reserve(64);for(auto value:result){char b[3];snprintf(b,sizeof(b),"%02x",value);out+=b;}return out;
+ mbedtls_md_free(&context);
+#endif
+ if(rc)return "";String out;out.reserve(64);for(auto value:result){char b[3];snprintf(b,sizeof(b),"%02x",value);out+=b;}return out;
 }
 bool equal(const String &a,const String &b){if(a.length()!=b.length())return false;uint8_t diff=0;for(size_t i=0;i<a.length();++i)diff|=a[i]^b[i];return !diff;}
 bool saveAdmin(){StaticJsonDocument<256>doc;doc["salt"]=adminSalt;doc["hash"]=adminHash;doc["mustChange"]=mustChange;File f=SPIFFS.open("/xtouch/admin.json.tmp",FILE_WRITE);if(!f)return false;size_t n=serializeJson(doc,f);f.flush();f.close();if(n!=measureJson(doc))return false;SPIFFS.remove("/xtouch/admin.json.previous");if(SPIFFS.exists("/xtouch/admin.json"))SPIFFS.rename("/xtouch/admin.json","/xtouch/admin.json.previous");if(!SPIFFS.rename("/xtouch/admin.json.tmp","/xtouch/admin.json")){SPIFFS.rename("/xtouch/admin.json.previous","/xtouch/admin.json");return false;}return true;}
@@ -61,6 +85,21 @@ bool authenticated(bool changeAllowed=false){
  sessionTouched=millis();if(mustChange&&!changeAllowed){error(403,"password_change_required");return false;}return true;
 }
 bool body(JsonDocument &doc,size_t limit=32768){if(!origin()){error(403,"origin");return false;}if(!server.hasArg("plain")||server.arg("plain").length()>limit||deserializeJson(doc,server.arg("plain"))||doc.overflowed()){error(400,"invalid_json");return false;}return true;}
+class LabBody:public Stream{public:String value;bool overflow=false;size_t write(uint8_t c)override{if(value.length()>=16384){overflow=true;return 0;}value+=(char)c;return 1;}int available()override{return 0;}int read()override{return -1;}int peek()override{return -1;}void flush()override{}};
+void labDiscover(){
+ if(!authenticated())return;
+ if(xtouch_cloud_busy()){error(409,"cloud_busy");return;}
+ StaticJsonDocument<256> request;if(!body(request))return;
+ const char *host=request["host"]|"";unsigned port=request["port"]|8894U;
+ if(!XTouchSchema::labHost(host)||!port||port>65535){error(400,"invalid_configuration");return;}
+ xtouch_portal_release_transport();WiFiClient client;HTTPClient http;http.setConnectTimeout(1500);http.setTimeout(2000);http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+ if(!http.begin(client,String("http://")+host+":"+port+"/api/discovery")){error(502,"cloud_network_error");return;}
+ int code=http.GET();LabBody sink;sink.value.reserve(16384);if(code==200)http.writeToStream(&sink);http.end();
+ if(code!=200||sink.overflow){error(502,"cloud_network_error");return;}
+ DynamicJsonDocument data(24576);if(deserializeJson(data,sink.value)||!data["devices"].is<JsonArray>()||data["devices"].size()>100){error(400,"invalid_configuration");return;}
+ for(JsonVariantConst p:data["devices"].as<JsonArrayConst>())if(!XTouchSchema::text(p["serialNumber"],32,true)||strncmp(p["serialNumber"]|"","XTSIM",5)||!XTouchSchema::asciiName(p["name"])||!XTouchSchema::text(p["printerModel"],32,true)){error(400,"invalid_configuration");return;}
+ json(200,sink.value);
+}
 void login(){
  if((int32_t)(millis()-lockedUntil)<0){server.sendHeader("Retry-After","30");error(429,"login_throttled");return;}
  DynamicJsonDocument doc(512);if(!body(doc,256))return;
@@ -158,8 +197,8 @@ void firmwareChunk(){
   if(!authenticated()){uploadDenied=true;uploadError="login_required";return;}if(xtouch_cloud_busy()||rebootAt){uploadError="not_ready";return;}
   xtouch_portal_release_transport();uploading=true;
  }else if(upload.status==UPLOAD_FILE_WRITE && uploading && uploadError.isEmpty()){
-  if(!Update.isRunning()){if(upload.currentSize<24||upload.buf[0]!=0xE9||upload.buf[12]||upload.buf[13]){uploadError="application_firmware_required";return;}if(!Update.begin(UPDATE_SIZE_UNKNOWN,U_FLASH)){uploadError="update_begin_failed";return;}}
-  if(upload.totalSize+upload.currentSize>0x1e0000||Update.write(upload.buf,upload.currentSize)!=upload.currentSize){uploadError="firmware_write_failed";Update.abort();}
+  if(!Update.isRunning()){if(!xtouch_firmware_header_valid(upload.buf,upload.currentSize)){uploadError="application_firmware_required";return;}if(!Update.begin(UPDATE_SIZE_UNKNOWN,U_FLASH)){uploadError="update_begin_failed";return;}}
+  if(upload.totalSize+upload.currentSize>XTOUCH_FIRMWARE_MAX_BYTES||Update.write(upload.buf,upload.currentSize)!=upload.currentSize){uploadError="firmware_write_failed";Update.abort();}
  }else if(upload.status==UPLOAD_FILE_END){
   if(uploading&&uploadError.isEmpty())uploadOk=true;
   if(!uploadOk&&uploadError.isEmpty())uploadError="invalid_firmware";
@@ -177,7 +216,13 @@ void qr(bool wifi) {
  lv_obj_t *title=lv_label_create(introScreen);
  lv_obj_set_style_text_font(title,&ui_font_portal_title_22,0);
  lv_obj_set_style_text_color(title,lv_color_white(),0);lv_obj_set_style_text_opa(title,LV_OPA_COVER,0);
- lv_obj_set_width(title,304);lv_obj_set_height(title,ui_font_portal_title_22.line_height);lv_obj_set_style_text_align(title,LV_TEXT_ALIGN_CENTER,0);lv_label_set_long_mode(title,LV_LABEL_LONG_DOT);
+ lv_obj_set_width(title,304);lv_obj_set_height(title,
+#ifdef XTOUCH_BOARD_P4
+ui_font_portal_title_22.line_height/2
+#else
+ui_font_portal_title_22.line_height
+#endif
+);lv_obj_set_style_text_align(title,LV_TEXT_ALIGN_CENTER,0);lv_label_set_long_mode(title,LV_LABEL_LONG_DOT);
  lv_label_set_text(title,wifi?xtouch_local("扫码连接 Wi-Fi","Scan to join Wi-Fi"):xtouch_local("扫码管理","Scan to manage"));
  lv_obj_align(title,LV_ALIGN_TOP_MID,0,6);
  lv_obj_t *code=lv_qrcode_create(introScreen,144,lv_color_hex(0x101820),lv_color_white());lv_obj_align(code,LV_ALIGN_TOP_MID,0,48);
@@ -210,7 +255,7 @@ void xtouch_portal_begin(){
  server.on("/",HTTP_GET,[]{headers();server.sendHeader("Content-Encoding","gzip");server.send_P(200,"text/html; charset=utf-8",(const char*)portal_index,sizeof(portal_index));});
  server.on("/portal.js",HTTP_GET,[]{headers();server.sendHeader("Content-Encoding","gzip");server.send_P(200,"text/javascript; charset=utf-8",(const char*)portal_script,sizeof(portal_script));});
  server.on("/portal.css",HTTP_GET,[]{headers();server.sendHeader("Content-Encoding","gzip");server.send_P(200,"text/css; charset=utf-8",(const char*)portal_style,sizeof(portal_style));});
- server.on("/api/info",HTTP_GET,[]{DynamicJsonDocument d(1024);d["ap"]=apMode;if(hasSession()&&!mustChange){d["ip"]=WiFi.localIP().toString();d["ssid"]=WiFi.SSID();lv_mem_monitor_t graphics;lv_mem_monitor(&graphics);d["lvglFree"]=graphics.free_size;d["lvglLargest"]=graphics.free_biggest_size;d["heap"]=ESP.getFreeHeap();d["minHeap"]=ESP.getMinFreeHeap();d["mode"]=xtouch_printer_cloud()?"Cloud":"LAN";d["clockReady"]=time(nullptr)>1577836800;d["uptime"]=millis()/1000;d["online"]=xtouch_printer_online();d["printer"]=xtouch_printer_name();d["version"]=XTOUCH_FIRMWARE_VERSION;d["resetReason"]=(int)esp_reset_reason();}String out;serializeJson(d,out);json(200,out);});
+ server.on("/api/info",HTTP_GET,[]{DynamicJsonDocument d(1024);d["ap"]=apMode;if(hasSession()&&!mustChange){d["ip"]=WiFi.localIP().toString();d["ssid"]=WiFi.SSID();lv_mem_monitor_t graphics;lv_mem_monitor(&graphics);d["lvglFree"]=graphics.free_size;d["lvglLargest"]=graphics.free_biggest_size;d["heap"]=ESP.getFreeHeap();d["minHeap"]=ESP.getMinFreeHeap();d["mode"]=xtouch_cloud_simulator()?"Simulator":xtouch_printer_cloud()?"Cloud":"LAN";d["clockReady"]=time(nullptr)>1577836800;d["uptime"]=millis()/1000;d["online"]=xtouch_printer_online();d["printer"]=xtouch_printer_name();d["version"]=XTOUCH_FIRMWARE_VERSION;d["resetReason"]=(int)esp_reset_reason();}String out;serializeJson(d,out);json(200,out);});
  server.on("/api/login",HTTP_POST,login);
  server.on("/api/password",HTTP_POST,changePassword);
  server.on("/api/logout",HTTP_POST,[]{if(!authenticated(true))return;session="";csrf="";xtouch_cloud_job_clear();json(200,"{\"ok\":true}");});
@@ -220,6 +265,7 @@ void xtouch_portal_begin(){
  server.on("/api/config",HTTP_GET,configGet);server.on("/api/config",HTTP_POST,configSave);
  server.on("/api/wifi/scan",HTTP_GET,scan);server.on("/api/wifi",HTTP_POST,wifiSave);
  server.on("/api/backup",HTTP_GET,[]{if(!authenticated())return;DynamicJsonDocument saved=xtouch_storage_read("/xtouch.json",0);DynamicJsonDocument doc(saved.capacity()+2048);doc.set(saved);doc["settings"]=xtouch_storage_read("/xtouch/settings.json",0);if(doc.overflowed()){error(503,"low_memory");return;}String out;serializeJson(doc,out);server.sendHeader("Content-Disposition","attachment; filename=xtouch.json");json(200,out);});
+ server.on("/api/lab/discover",HTTP_POST,labDiscover);
  server.on("/api/cloud",HTTP_POST,cloudStart);server.on("/api/cloud",HTTP_GET,[]{if(!authenticated())return;if(background){json(200,"{\"busy\":true}");return;}
  String value=xtouch_cloud_job_result();if(!xtouch_cloud_busy()){
   DynamicJsonDocument d(min((size_t)18432,max((size_t)2048,value.length()*2)));deserializeJson(d,value);inspectResult(d,manualAccount);
@@ -227,7 +273,7 @@ void xtouch_portal_begin(){
   for(unsigned i=0;i<healthCount;++i)if(health[i].id==manualAccount){if(d["ok"].as<bool>())health[i].state=1;else if(!strcmp(d["error"]|"","authentication_rejected"))health[i].state=-1;}
  }json(200,value);});
  server.onNotFound([]{if(apMode){server.sendHeader("Location","http://192.168.4.1/");server.send(302,"text/plain","");}else error(404,"not_found");});server.begin();
- DynamicJsonDocument config=xtouch_storage_read("/xtouch.json",0);for(JsonObject a:config["cloudAccounts"].as<JsonArray>())if(healthCount<4)health[healthCount++].id=a["id"].as<String>();String ssid=config["ssid"]|"",password=config["pwd"]|"";
+ DynamicJsonDocument config=xtouch_storage_read("/xtouch.json",0);for(JsonObject a:config["cloudAccounts"].as<JsonArray>())if(!a["simulator"].as<bool>()&&healthCount<4)health[healthCount++].id=a["id"].as<String>();String ssid=config["ssid"]|"",password=config["pwd"]|"";
  if(ssid.isEmpty())startAP();else{WiFi.begin(ssid.c_str(),password.c_str());connectAt=millis();}
 }
 void xtouch_portal_loop(){
@@ -267,6 +313,6 @@ void xtouch_portal_loop(){
  server.handleClient();if(apMode)dns.processNextRequest();
  if(scanning){int count=WiFi.scanComplete();if(count>=0){DynamicJsonDocument doc(8192);JsonArray list=doc.to<JsonArray>();for(int i=0;i<count&&list.size()<30;++i){if(WiFi.SSID(i).isEmpty())continue;JsonObject n=list.createNestedObject();n["ssid"]=WiFi.SSID(i);n["rssi"]=WiFi.RSSI(i);n["open"]=WiFi.encryptionType(i)==WIFI_AUTH_OPEN;}scanCache="";serializeJson(doc,scanCache);WiFi.scanDelete();scanning=false;scanAt=millis();}else if(count==WIFI_SCAN_FAILED){scanning=false;scanAt=millis();}}
  if(connectAt&&WiFi.status()!=WL_CONNECTED&&millis()-connectAt>20000){connectAt=0;startAP();}
- int request=showRequest;showRequest=0;if(request==1){if(WiFi.status()==WL_CONNECTED)qr(false);else startAP();}else if(request==2){startAP();qr(true);}else if(request==3){qrActive=false;loadScreen(4);}else if(request==4){ui_confirmPanel_show(xtouch_local("重置设备？保留SD备份", "Reset device? SD backup remains."),factoryReset);}
+ int request=showRequest;showRequest=0;if(request==1){if(WiFi.status()==WL_CONNECTED)qr(false);else startAP();}else if(request==2){startAP();qr(true);}else if(request==3){qrActive=false;loadScreen(4);}else if(request==4){ui_confirmPanel_show_danger(xtouch_local("重置设备？保留SD备份", "Reset device? SD backup remains."),factoryReset);}
  if(rebootAt&&(int32_t)(millis()-rebootAt)>=0)ESP.restart();
 }

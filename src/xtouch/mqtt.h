@@ -9,6 +9,7 @@
 #include <ArduinoJson.h>
 #include "ui/ui_msgs.h"
 #include "types.h"
+#include "ams_module.h"
 #include "autogrowstream.h"
 // #include "xtouch/ams-status.hpp"
 
@@ -301,7 +302,7 @@ void xtouch_mqtt_processPushStatus(JsonDocument &incomingJson)
             String wifi_signal = incomingJson["print"]["wifi_signal"].as<String>();
             wifi_signal.replace("dBm", "");
             char *end;long strength=strtol(wifi_signal.c_str(),&end,10);
-            if(wifi_signal.length()&&!*end&&strength>=-120&&strength<=0){bambuStatus.wifi_signal=-strength;xtouch_mqtt_sendMsg(XTOUCH_ON_WIFI_SIGNAL,bambuStatus.wifi_signal);}
+            if(wifi_signal.length()&&!*end&&strength>=-120&&strength<=0){bambuStatus.wifi_signal=-strength;bambuStatus.wifi_signal_valid=true;xtouch_mqtt_sendMsg(XTOUCH_ON_WIFI_SIGNAL,bambuStatus.wifi_signal);}
         }
 
         double fanPacked;
@@ -519,7 +520,11 @@ void xtouch_mqtt_processPushStatus(JsonDocument &incomingJson)
         }
         // #pragma endregion
 
-        if(faultsChanged)xtouch_mqtt_sendMsg(XTOUCH_ON_ERROR,0);
+        if(faultsChanged){
+            ConsoleInfo.printf("[HMS] report print=0x%08lX count=%u pending=%u\n",(unsigned long)hms_print_error(),hms_health_count(),(unsigned)hms_has_pending());
+            for(unsigned i=0;i<hms_health_count();++i){uint64_t code=hms_health_at(i);ConsoleInfo.printf("[HMS] code=%08lX%08lX\n",(unsigned long)(code>>32),(unsigned long)code);}
+            xtouch_mqtt_sendMsg(XTOUCH_ON_ERROR,0);
+        }
         if (incomingJson["print"].containsKey("gcode_state") ||
             incomingJson["print"].containsKey("layer_num") ||
             incomingJson["print"].containsKey("total_layer_num") ||
@@ -548,7 +553,7 @@ void xtouch_mqtt_parseMessage(XtouchAutoGrowBufferStream &input, byte type = 0)
         JsonObject headFilter=amsFilter["print"]["device"]["nozzle"]["info"].to<JsonArray>().createNestedObject();
         for(const char *key:{"id","diameter","type"})headFilter[key]=true;
         amsFilter["camera"]["command"]=true;amsFilter["camera"]["control"]=true;
-        for(const char *key:{"command","sequence_id","err_code","result"})amsFilter["system"][key]=true;
+        for(const char *key:{"command","sequence_id","err_code","result","reason"})amsFilter["system"][key]=true;
         amsFilter["info"]["module"][0]["name"]=true;amsFilter["info"]["module"][0]["product_name"]=true;
     }else{
         amsFilter["print"]["command"]=true;
@@ -569,23 +574,19 @@ void xtouch_mqtt_parseMessage(XtouchAutoGrowBufferStream &input, byte type = 0)
     {
         // get_version is already requested on connect. Only OTA identifies the
         // printer; an AMS/accessory product name cannot replace its model.
+        bool accessoryChanged=false;
         for (JsonObject module : incomingJson["info"]["module"].as<JsonArray>()) {
             const char *name = module["name"] | "";
-            int raw=-1;unsigned kind=0;
-            if(sscanf(name,"ams/%d",&raw)==1)kind=1;
-            else if(sscanf(name,"ams_f1/%d",&raw)==1)kind=2;
-            else if(sscanf(name,"n3f/%d",&raw)==1)kind=3;
-            else if(sscanf(name,"n3s/%d",&raw)==1)kind=4;
+            int raw=-1;unsigned kind=xtouch_ams_module_kind(name,&raw);
             int index=xtouch_ams_unit_index(raw);
-            if(kind&&index>=0)bambuStatus.ams_kind[index]=kind;
+            if(kind&&index>=0){bambuStatus.ams_module_kind[index]=kind;if(!bambuStatus.ams_kind[index]){bambuStatus.ams_kind[index]=kind;accessoryChanged=true;}}
             if (strcmp(name, "ota")) continue;
             const char *code = ui_printer_model_code(module["product_name"] | "");
             if (code[0] && strcmp(code, bambuStatus.printer_type)) {
                 xtouch_mqtt_set_model(code);
             }
         }
-
-
+        if(accessoryChanged)xtouch_mqtt_sendMsg(XTOUCH_ON_AMS_BITS,0);
         if ((millis() - xtouch_mqtt_lastPushStatus) > ((xtouch_printer_cloud()?180U:XTOUCH_MQTT_SERVER_PUSH_STATUS_TIMEOUT) * 1000U))
         {
             Serial.println(F("[XTouch][MQTT] Reconnect after status timeout"));
@@ -609,6 +610,7 @@ void xtouch_mqtt_parseMessage(XtouchAutoGrowBufferStream &input, byte type = 0)
             }
             else if (command == "gcode_line")
             {
+                xtouch_device_filament_reply(incomingJson["print"].as<JsonObjectConst>());
                 ConsoleDebug.println(F("[XTouch][MQTT] gcode_line ack"));
             }
 
@@ -694,11 +696,12 @@ void xtouch_mqtt_connect()
         (int32_t)(millis() - xtouch_mqtt_nextAttempt) < 0) return;
     String clientId = "XTOUCH-" + String((uint32_t)ESP.getEfuseMac(), HEX);
     bool cloud = xtouch_printer_cloud();
-    if (cloud && (!xtouch_cloud_ready() || time(NULL) < 1577836800)) { xtouch_mqtt_nextAttempt=millis()+5000; return; }
-    if (cloud) xtouch_wiFiClientSecure.setCACert(xtouch_cloud_trust()); else xtouch_wiFiClientSecure.setInsecure();
+    if (cloud && (!xtouch_cloud_ready() || (!xtouch_cloud_simulator() && time(NULL) < 1577836800))) { xtouch_mqtt_nextAttempt=millis()+5000; return; }
+    if (cloud && !xtouch_cloud_simulator()) xtouch_wiFiClientSecure.setCACert(xtouch_cloud_trust()); else xtouch_wiFiClientSecure.setInsecure();
     const char *host=cloud?xtouch_cloud_broker():xTouchConfig.xTouchHost;
-    xtouch_pubSubClient.setServer(host,8883);
-    bool transportReady = xtouch_wiFiClientSecure.connect(host, 8883, 2000) == 1;
+    uint16_t port=cloud?xtouch_cloud_port():8883;
+    xtouch_pubSubClient.setServer(host,port);
+    bool transportReady = xtouch_wiFiClientSecure.connect(host, port, 2000) == 1;
     if (transportReady) xtouch_wiFiClientSecure.setTimeout(2000);
     bool connected = transportReady &&
         xtouch_pubSubClient.connect(clientId.c_str(), cloud?xtouch_cloud_user():"bblp", cloud?xtouch_cloud_token():xTouchConfig.xTouchAccessCode);
@@ -781,33 +784,33 @@ void xtouch_mqtt_setup()
     xtouch_pubSubClient.setSocketTimeout(2);
 
     /* home */
-    lv_msg_subscribe(XTOUCH_COMMAND_LIGHT_TOGGLE, (lv_msg_subscribe_cb_t)xtouch_device_onLightToggleCommand, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_STOP, (lv_msg_subscribe_cb_t)xtouch_device_onStopCommand, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_PAUSE, (lv_msg_subscribe_cb_t)xtouch_device_onPauseCommand, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_RESUME, (lv_msg_subscribe_cb_t)xtouch_device_onResumeCommand, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_LIGHT_TOGGLE, xtouch_message_callback<xtouch_device_onLightToggleCommand>, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_STOP, xtouch_message_callback<xtouch_device_onStopCommand>, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_PAUSE, xtouch_message_callback<xtouch_device_onPauseCommand>, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_RESUME, xtouch_message_callback<xtouch_device_onResumeCommand>, NULL);
 
     /* control */
-    lv_msg_subscribe(XTOUCH_COMMAND_HOME, (lv_msg_subscribe_cb_t)xtouch_device_onHomeCommand, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_LEFT, (lv_msg_subscribe_cb_t)xtouch_device_onLeftCommand, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_RIGHT, (lv_msg_subscribe_cb_t)xtouch_device_onRightCommand, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_UP, (lv_msg_subscribe_cb_t)xtouch_device_onUpCommand, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_DOWN, (lv_msg_subscribe_cb_t)xtouch_device_onDownCommand, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_BED_TARGET_TEMP, (lv_msg_subscribe_cb_t)xtouch_device_onBedTargetTempCommand, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_NOZZLE_TARGET_TEMP, (lv_msg_subscribe_cb_t)xtouch_device_onNozzleTargetCommand, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_PART_FAN_SPEED, (lv_msg_subscribe_cb_t)xtouch_device_onPartSpeedCommand, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_AUX_FAN_SPEED, (lv_msg_subscribe_cb_t)xtouch_device_onAuxSpeedCommand, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_CHAMBER_FAN_SPEED, (lv_msg_subscribe_cb_t)xtouch_device_onChamberSpeedCommand, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_PRINT_SPEED, (lv_msg_subscribe_cb_t)xtouch_device_onPrintSpeedCommand, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_HOME, xtouch_message_callback<xtouch_device_onHomeCommand>, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_LEFT, xtouch_message_callback<xtouch_device_onLeftCommand>, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_RIGHT, xtouch_message_callback<xtouch_device_onRightCommand>, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_UP, xtouch_message_callback<xtouch_device_onUpCommand>, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_DOWN, xtouch_message_callback<xtouch_device_onDownCommand>, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_BED_TARGET_TEMP, xtouch_message_callback<xtouch_device_onBedTargetTempCommand>, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_NOZZLE_TARGET_TEMP, xtouch_message_callback<xtouch_device_onNozzleTargetCommand>, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_PART_FAN_SPEED, xtouch_message_callback<xtouch_device_onPartSpeedCommand>, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_AUX_FAN_SPEED, xtouch_message_callback<xtouch_device_onAuxSpeedCommand>, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_CHAMBER_FAN_SPEED, xtouch_message_callback<xtouch_device_onChamberSpeedCommand>, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_PRINT_SPEED, xtouch_message_callback<xtouch_device_onPrintSpeedCommand>, NULL);
     lv_msg_subscribe(XTOUCH_COMMAND_NOZZLE_INDEXED,xtouch_device_onIndexedNozzle,NULL);
     lv_msg_subscribe(XTOUCH_COMMAND_AMS_DRY,xtouch_device_onAmsDry,NULL);
     lv_msg_subscribe(XTOUCH_COMMAND_FILAMENT_ACTION, xtouch_device_onFilamentAction, NULL);
 
-    lv_msg_subscribe(XTOUCH_COMMAND_AMS_CONTROL, (lv_msg_subscribe_cb_t)xtouch_device_command_ams_control, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_CLEAN_PRINT_ERROR, (lv_msg_subscribe_cb_t)xtouch_device_command_clean_print_error, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_AMS_CONTROL, xtouch_device_command_ams_control, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_CLEAN_PRINT_ERROR, xtouch_device_command_clean_print_error, NULL);
 
     /* filament */
-    lv_msg_subscribe(XTOUCH_COMMAND_EXTRUDE_UP, (lv_msg_subscribe_cb_t)xtouch_device_onNozzleUp, NULL);
-    lv_msg_subscribe(XTOUCH_COMMAND_EXTRUDE_DOWN, (lv_msg_subscribe_cb_t)xtouch_device_onNozzleDown, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_EXTRUDE_UP, xtouch_message_callback<xtouch_device_onNozzleUp>, NULL);
+    lv_msg_subscribe(XTOUCH_COMMAND_EXTRUDE_DOWN, xtouch_message_callback<xtouch_device_onNozzleDown>, NULL);
 
     loadScreen(0);
     xtouch_screen_startScreenTimer();

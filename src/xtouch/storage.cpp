@@ -2,10 +2,10 @@
 #include "printers.h"
 #include "profile_schema.h"
 #include <SPIFFS.h>
-#include <SD.h>
+#include "xtouch/card_fs.h"
 #include <MD5Builder.h>
 #include <esp_partition.h>
-#include <math.h>
+#include <cmath>
 #include <time.h>
 #include <utility>
 
@@ -56,7 +56,7 @@ bool validPayload(const char *path, JsonDocument &doc) {
     }
     if (!strcmp(path, paths[2])) {
         for (const char *key : {"xCalM", "yCalM", "xCalC", "yCalC"})
-            if (!doc[key].is<float>() || !isfinite(doc[key].as<float>())) return false;
+            if (!doc[key].is<float>() || !std::isfinite(doc[key].as<float>())) return false;
         return fabs(doc["xCalM"].as<float>()) > .001f && fabs(doc["xCalM"].as<float>()) < 10 &&
                fabs(doc["yCalM"].as<float>()) > .001f && fabs(doc["yCalM"].as<float>()) < 10 &&
                fabs(doc["xCalC"].as<float>()) < 4096 && fabs(doc["yCalC"].as<float>()) < 4096;
@@ -229,7 +229,7 @@ bool syncOne(const char *path, bool runtime, bool forceLocal = false) {
         card.revision = max(card.revision, local.revision) + 1;
         card.dirty = true;
         if (!write(SPIFFS, path, card)) return false;
-        Serial.printf("[STORE] imported %s revision=%u\n", path, card.revision);
+        Serial.printf("[STORE] imported %s revision=%u\n", path, (unsigned)card.revision);
         if (write(SD, path, card)) { card.dirty = false; write(SPIFFS, path, card); }
         if (runtime) restartRequired = true;
         return true;
@@ -247,7 +247,7 @@ bool syncOne(const char *path, bool runtime, bool forceLocal = false) {
     }
     if (write(SD, path, local)) {
         local.dirty = false; write(SPIFFS, path, local);
-        Serial.printf("[STORE] exported %s revision=%u\n", path, local.revision);
+        Serial.printf("[STORE] exported %s revision=%u\n", path, (unsigned)local.revision);
     }
     return false;
 }
@@ -300,7 +300,7 @@ bool xtouch_storage_write(const char *path, const JsonDocument &document) {
     }
     current.revision = old.revision + 1; current.modified = now(); current.dirty = true;
     if (!write(SPIFFS, path, current)) return false;
-    Serial.printf("[STORE] saved %s revision=%u\n", path, current.revision);
+    Serial.printf("[STORE] saved %s revision=%u\n", path, (unsigned)current.revision);
     if (sdAvailable) {current.data.clear();current.data.shrinkToFit();syncOne(path,false,true);}
     return true;
 }

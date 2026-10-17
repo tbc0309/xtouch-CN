@@ -100,6 +100,9 @@ void ui_numeric_show(const struct ui_numeric_field *fields, unsigned count, unsi
     lv_obj_set_style_text_font(ui_temperatureComponent_input_target, XTOUCH_FONT_NUMERIC, 0);
     lv_obj_set_style_pad_all(ui_temperatureComponent_input_target, 4, 0);
     lv_obj_set_style_text_color(ui_temperatureComponent_input_target, lv_color_hex(0xFFAA00), 0);
+    lv_obj_add_event_cb(ui_temperatureComponent_input_target,ui_layout_numeric_center_event,LV_EVENT_SIZE_CHANGED,NULL);
+    lv_obj_add_event_cb(ui_temperatureComponent_input_target,ui_layout_numeric_center_event,LV_EVENT_VALUE_CHANGED,NULL);
+
     if (more) {
         lv_obj_t *b = lv_btn_create(left);
         lv_obj_set_pos(b, 0, 170);
@@ -127,6 +130,7 @@ void ui_numeric_show(const struct ui_numeric_field *fields, unsigned count, unsi
         ui_comp_get_child(ui_temperatureComponent,
                           UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTKEYBOARD_NUMPADKEYBACK),
         LV_SYMBOL_CLOSE);
+    ui_text_guard_tree(left);
 }
 
 bool ui_numeric_active(void) { return numericActive; }

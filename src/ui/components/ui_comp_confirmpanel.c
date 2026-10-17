@@ -1,18 +1,33 @@
 #include "../ui.h"
+#include <string.h>
+#include <stdio.h>
 
 // COMPONENT confirmPanel
 
 void (*ui_confirmPanel_showOnYes)();
 static lv_timer_t *noticeTimer;
+static lv_obj_t *noticeBox,*noticeLabel;
+static ui_message_kind noticeKind;
 static unsigned confirmationOwner;
 static uint32_t confirmationAt;
-static void notice_timeout(lv_timer_t *timer){noticeTimer=NULL;ui_confirmPanel_hide();lv_timer_del(timer);}
+void ui_notice_hide(void){if(noticeTimer){lv_timer_del(noticeTimer);noticeTimer=NULL;}if(noticeBox){lv_obj_del(noticeBox);noticeBox=noticeLabel=NULL;}}
+bool ui_notice_visible(void){return noticeBox!=NULL;}
+static void notice_timeout(lv_timer_t *timer){noticeTimer=NULL;ui_notice_hide();lv_timer_del(timer);printf("[NOTICE] close=auto\n");}
+static void notice_clicked(lv_event_t *event){(void)event;ui_notice_hide();printf("[NOTICE] close=local\n");}
 
 void ui_confirmPanel_NOOP(){};
 
+static void compact_layout(void){
+ lv_obj_t *caption=ui_comp_get_child(ui_confirmComponent,2),*panel=ui_comp_get_child(ui_confirmComponent,1),*buttons[]={ui_comp_get_child(ui_confirmComponent,3),ui_comp_get_child(ui_confirmComponent,5)};
+ ui_layout_dialog(panel,lv_obj_get_parent(caption),buttons,2,false);
+}
 void ui_confirmPanel_show(const char *title, void (*onYES)(void))
 {
-    if(noticeTimer){lv_timer_del(noticeTimer);noticeTimer=NULL;}
+    ui_notice_hide();
+    ui_action_style(ui_comp_get_child(ui_confirmComponent,3),UI_ACTION_SECONDARY);
+    ui_action_style(ui_comp_get_child(ui_confirmComponent,5),UI_ACTION_PRIMARY);
+    lv_label_set_text(ui_comp_get_child(ui_confirmComponent,6),XTOUCH_TEXT_CONFIRM);
+    lv_obj_t *confirmIcon=lv_obj_get_child(ui_comp_get_child(ui_confirmComponent,5),0);lv_label_set_text(confirmIcon,"q");
     lv_obj_clear_flag(ui_comp_get_child(ui_confirmComponent,3),LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(ui_comp_get_child(ui_confirmComponent,5),LV_OBJ_FLAG_HIDDEN);
     ui_confirmPanel_showOnYes = onYES;
@@ -22,21 +37,33 @@ void ui_confirmPanel_show(const char *title, void (*onYES)(void))
     lv_obj_clear_flag(ui_confirmComponent, LV_OBJ_FLAG_HIDDEN); /// Flags
     lv_obj_t *titleLabel = ui_comp_get_child(ui_confirmComponent, UI_COMP_CONFIRMPANEL_CONFIRMPANELCONTAINER_CONFIRMPANELCAPTION);
     lv_label_set_text(titleLabel, title);
+    ui_message_caption(titleLabel,UI_MESSAGE_CONFIRM);
+    compact_layout();
 
     // [](int a){
 }
 
-void ui_notice_show(const char *text,unsigned timeout){
- if(!lv_obj_has_flag(ui_confirmComponent,LV_OBJ_FLAG_HIDDEN)&&ui_confirmPanel_showOnYes&&ui_confirmPanel_showOnYes!=ui_confirmPanel_NOOP)return;
+void ui_confirmPanel_show_danger(const char *title,void (*onYES)(void)){ui_confirmPanel_show(title,onYES);ui_action_style(ui_comp_get_child(ui_confirmComponent,5),UI_ACTION_DESTRUCTIVE);}
+
+bool ui_notice_show(const char *text,unsigned timeout){return ui_notice_show_kind(text,timeout,timeout?UI_MESSAGE_INFO:UI_MESSAGE_ERROR);}
+bool ui_notice_show_kind(const char *text,unsigned timeout,ui_message_kind kind){
+ if(!lv_obj_has_flag(ui_hmsComponent,LV_OBJ_FLAG_HIDDEN))return false;
+ if(timeout&&!lv_obj_has_flag(ui_confirmComponent,LV_OBJ_FLAG_HIDDEN))return false;
+ if(timeout){
+  if(noticeBox){const char *body=strchr(lv_label_get_text(noticeLabel),'\n');if(body&&noticeKind==kind&&!strcmp(body+1,text))return true;}
+  ui_notice_hide();noticeKind=kind;noticeBox=lv_obj_create(lv_layer_top());noticeLabel=lv_label_create(noticeBox);lv_label_set_text(noticeLabel,text);ui_message_caption(noticeLabel,kind);ui_layout_notice(noticeBox,noticeLabel);lv_obj_add_event_cb(noticeBox,notice_clicked,LV_EVENT_CLICKED,NULL);noticeTimer=lv_timer_create(notice_timeout,timeout,NULL);printf("[NOTICE] show timeout=%u\n",timeout);return true;
+ }
  ui_confirmPanel_show(text,ui_confirmPanel_NOOP);lv_obj_add_flag(ui_comp_get_child(ui_confirmComponent,3),LV_OBJ_FLAG_HIDDEN);
- if(timeout){lv_obj_add_flag(ui_comp_get_child(ui_confirmComponent,5),LV_OBJ_FLAG_HIDDEN);noticeTimer=lv_timer_create(notice_timeout,timeout,NULL);}
+ lv_obj_t *caption=ui_comp_get_child(ui_confirmComponent,2);lv_label_set_text(caption,text);ui_message_caption(caption,kind);ui_action_style(ui_comp_get_child(ui_confirmComponent,5),UI_ACTION_SECONDARY);lv_label_set_text(ui_comp_get_child(ui_confirmComponent,6),xtouch_local("关闭","Close"));lv_label_set_text(lv_obj_get_child(ui_comp_get_child(ui_confirmComponent,5),0),"r");compact_layout();return true;
 }
 
-void ui_notice_unavailable(void){ui_notice_show(xtouch_local("设备忙或状态已变更", "Device busy or state changed."),0);}
+void ui_notice_unavailable(void){ui_notice_show_kind(xtouch_local("设备忙或状态已变更", "Device busy or state changed."),1800,UI_MESSAGE_WARNING);}
+
+void ui_confirmPanel_state_changed(void){if(ui_confirmPanel_showOnYes&&ui_confirmPanel_showOnYes!=ui_confirmPanel_NOOP)ui_confirmPanel_hide();}
 
 void ui_confirmPanel_hide()
 {
-    if(noticeTimer){lv_timer_del(noticeTimer);noticeTimer=NULL;}
+    ui_notice_hide();
     ui_confirmPanel_showOnYes = NULL;
     lv_obj_add_flag(ui_confirmComponent, LV_OBJ_FLAG_HIDDEN); /// Flags
     // [](int a){
@@ -180,6 +207,11 @@ lv_obj_t *ui_confirmPanel_create(lv_obj_t *comp_parent)
     lv_obj_add_event_cb(cui_confirmPanel, del_component_child_event_cb, LV_EVENT_DELETE, children);
     lv_obj_add_event_cb(cui_confirmPanelNO, ui_event_comp_confirmPanel_confirmPanelNO, LV_EVENT_ALL, children);
     lv_obj_add_event_cb(cui_confirmPanelYES, ui_event_comp_confirmPanel_confirmPanelYES, LV_EVENT_ALL, children);
+    lv_obj_t *body=lv_obj_create(cui_confirmPanelContainer);lv_obj_remove_style_all(body);lv_obj_set_scroll_dir(body,LV_DIR_VER);lv_obj_set_scrollbar_mode(body,LV_SCROLLBAR_MODE_AUTO);lv_obj_clear_flag(body,LV_OBJ_FLAG_SCROLL_ELASTIC|LV_OBJ_FLAG_SCROLL_CHAIN);
+    lv_obj_set_parent(cui_confirmPanelCaption,body);lv_obj_set_width(cui_confirmPanelCaption,lv_pct(100));lv_obj_set_style_pad_all(cui_confirmPanelCaption,0,0);lv_obj_set_style_text_align(cui_confirmPanelCaption,LV_TEXT_ALIGN_CENTER,0);lv_label_set_long_mode(cui_confirmPanelCaption,LV_LABEL_LONG_WRAP);
+    ui_layout_action(cui_confirmPanelNO,&ui_font_xlcdmin,"r");
+    ui_layout_action(cui_confirmPanelYES,&ui_font_xlcdmin,"q");
+    lv_obj_t *actions[]={cui_confirmPanelNO,cui_confirmPanelYES};ui_layout_dialog(cui_confirmPanelContainer,body,actions,2,false);
     ui_comp_confirmPanel_create_hook(cui_confirmPanel);
     return cui_confirmPanel;
 }

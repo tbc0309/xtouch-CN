@@ -1,5 +1,7 @@
-#include <driver/i2s.h>
 #include <Arduino.h>
+#include <cmath>
+using std::isfinite;
+#include "xtouch/message_adapter.h"
 #include <ArduinoJson.h>
 #include "xtouch/debug.h"
 #include "xtouch/paths.h"
@@ -13,7 +15,9 @@
 #include "xtouch/sdcard.h"
 #include "xtouch/hms.h"
 
-#if defined(__XTOUCH_SCREEN_28__)
+#if defined(XTOUCH_WAVESHARE)
+#include "screen.h"
+#elif defined(__XTOUCH_SCREEN_28__)
 #include "devices/2.8/screen.h"
 #endif
 
@@ -27,6 +31,9 @@
 #include "xtouch/connection.h"
 #include "xtouch/coldboot.h"
 #include "xtouch/portal.h"
+#ifdef XTOUCH_WAVESHARE
+#include "camera.h"
+#endif
 
 void xtouch_portal_release_transport() {
   xtouch_pubSubClient.disconnect();xtouch_wiFiClientSecure.stop();
@@ -111,6 +118,9 @@ void loop()
     loadScreen(4);xtouch_mqtt_nextAttempt=millis();
   }
   xtouch_portal_loop();
+#ifdef XTOUCH_WAVESHARE
+  xtouch_camera_poll();
+#endif
   xtouch_device_filament_poll();
   if (xtouch_portal_maintenance()) {
     if (xtouch_pubSubClient.connected()) xtouch_pubSubClient.disconnect();

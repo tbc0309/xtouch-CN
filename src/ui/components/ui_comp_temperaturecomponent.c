@@ -1,4 +1,5 @@
 #include "../ui.h"
+#include <stdio.h>
 #include "../nozzle_details.h"
 #include "../numeric_editor.h"
 #include "../filament_actions.h"
@@ -34,6 +35,12 @@ void ui_temperatureComponent_hide_keypad()
     lv_obj_t *chamber = ui_comp_get_child(ui_temperatureComponent, UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENTFANS_TEMPERATURECOMPONENTCHAMBERFAN);
 
     if (ui_temperatureComponent_input_target) {
+        lv_obj_remove_event_cb(ui_temperatureComponent_input_target,ui_layout_numeric_center_event);
+        lv_obj_set_style_pad_left(ui_temperatureComponent_input_target,0,0);
+        lv_obj_set_style_pad_right(ui_temperatureComponent_input_target,0,0);
+        lv_obj_set_style_pad_top(ui_temperatureComponent_input_target,0,0);
+        lv_obj_set_style_pad_bottom(ui_temperatureComponent_input_target,0,0);
+
         lv_obj_clear_flag(ui_temperatureComponent_input_target, LV_OBJ_FLAG_IGNORE_LAYOUT);
         lv_obj_t *parent=lv_obj_get_parent(ui_temperatureComponent_input_target);
         bool heating=parent==bed ? bambuStatus.bed_target_temper>0 : parent==nozzle && bambuStatus.nozzle_target_temper>0;
@@ -128,6 +135,9 @@ void ui_temperatureComponent_show_keypad(int type, int index)
     lv_obj_add_flag(ui_temperatureComponent_input_target, LV_OBJ_FLAG_IGNORE_LAYOUT);
     lv_obj_align(ui_temperatureComponent_input_target, LV_ALIGN_BOTTOM_MID, 0, -12);
     lv_textarea_set_text(ui_temperatureComponent_input_target, "");
+    lv_obj_add_event_cb(ui_temperatureComponent_input_target,ui_layout_numeric_center_event,LV_EVENT_VALUE_CHANGED,NULL);
+    lv_obj_update_layout(ui_temperatureComponent_input_target);ui_layout_numeric_center(ui_temperatureComponent_input_target);
+
     update_back_key();lv_obj_clear_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -1135,6 +1145,13 @@ lv_obj_t *ui_temperatureComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_bg_color(cui_numpadKeyBack, lv_color_hex(0x862C32), LV_STATE_PRESSED);
     lv_obj_set_style_bg_color(cui_numpadKeyOk, lv_color_hex(0x318A52), 0);
     lv_obj_set_style_bg_color(cui_numpadKeyOk, lv_color_hex(0x23653C), LV_STATE_PRESSED);
+
+    // Every board uses equal grid tracks; glyph metrics cannot resize keys.
+    lv_obj_t *keys[]={cui_numpadKey1,cui_numpadKey2,cui_numpadKey3,cui_numpadKey4,cui_numpadKey5,cui_numpadKey6,cui_numpadKey7,cui_numpadKey8,cui_numpadKey9,cui_numpadKey0,cui_numpadKeyBack,cui_numpadKeyOk};
+    for(unsigned i=0;i<12;i++){
+        lv_obj_set_width(keys[i],lv_pct(30));lv_obj_set_height(keys[i],54);
+        ui_layout_key(keys[i]);
+    }
 
     lv_obj_t **children = lv_mem_alloc(sizeof(lv_obj_t *) * _UI_COMP_TEMPERATURECOMPONENT_NUM);
     children[UI_COMP_TEMPERATURECOMPONENT_TEMPERATURECOMPONENT] = cui_temperatureComponent;

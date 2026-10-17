@@ -80,6 +80,6 @@
 #define XTOUCH_TEXT_FILAMENT_LOAD_CONFIRM_KO "%s 로드할까요?\n가열되거나 헤드가 움직일 수 있습니다"
 #define XTOUCH_TEXT_FILAMENT_UNLOAD_CONFIRM_KO "%s 언로드할까요?\n현재 필라멘트를 빼냅니다"
 #define XTOUCH_TEXT_FILAMENT_SET_TEMP_KO "온도 설정"
-#define XTOUCH_TEXT_CONTROL_AUTH_ERROR_KO "오류 84033543\nLAN 및 개발자 모드 권장"
+#define XTOUCH_TEXT_CONTROL_AUTH_ERROR_KO "오류 코드 84033543\n일부 기능: LAN + 개발자 모드 필요."
 #define XTOUCH_TEXT_CONTROL_ERROR_KO "명령 거부\n오류 %u"
 #define XTOUCH_TEXT_UP_TO_DATE_KO "최신 버전입니다"

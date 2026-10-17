@@ -32,3 +32,39 @@ for key in translations[0]:
     assert all(f==formats[0] for f in formats), f'Format mismatch: {key}'
 print(f'PASS: {len(translations[0])} complete eight-language translation keys')
 print(f'PASS: {len(covered)} font glyphs; all localized source strings covered')
+
+
+# Check all live UI/portal lookup sites, not just equal language-key counts.
+import json
+catalogs={name:json.loads((root/'resources'/f'{name}-locales.json').read_text('utf-8')) for name in ('ui','portal')}
+for name,rows in catalogs.items():
+    for key,values in rows.items():
+        assert len(values)==8 and all(isinstance(v,str) and v.strip() for v in values), (name,key,'incomplete')
+        if name=='ui':assert values[2]==key,(name,key,'lookup key changed')
+        for value in values:
+            assert re.findall(r'%(?:\d+\$)?[dsu]',value)==re.findall(r'%(?:\d+\$)?[dsu]',values[0]),(name,key,'format')
+for folder,function,catalog in [('src','xtouch_local','ui'),('portal','t','portal')]:
+    for path in (root/folder).rglob('*'):
+        if path.suffix not in ('.h','.c','.cpp','.js') or 'fonts' in path.parts or path.name=='portal_assets.h':continue
+        source=path.read_text('utf-8-sig')
+        pattern=r'\b'+function+r'\(\s*("(?:\\.|[^"\\])*")\s*,\s*("(?:\\.|[^"\\])*")'
+        for zh,en in re.findall(pattern,source):
+            key=json.loads(en)
+            assert key in catalogs[catalog],(str(path.relative_to(root)),key,'untranslated fallback')
+            values=catalogs[catalog][key]
+            if json.loads(zh)=='连接方式':assert key=='Connection type','Connection status/type must use different keys'
+print(f"PASS: {len(catalogs['ui'])} UI and {len(catalogs['portal'])} portal rows; live literal lookups have all eight languages")
+
+# Static portal labels and API-error arrays also bypass literal t(...) calls.
+portal_source=(root/'portal/app.js').read_text('utf-8')
+words=portal_source.split('const words = {',1)[1].split('};',1)[0]
+for value in re.findall(r'\w+:\s*("(?:\\.|[^"\\])*")',words):
+    assert json.loads(value) in catalogs['portal'], ('portal label',json.loads(value))
+for zh,en in re.findall(r'\[\s*("(?:\\.|[^"\\])*")\s*,\s*("(?:\\.|[^"\\])*")\s*\]',portal_source):
+    if any('\u4e00'<=c<='\u9fff' for c in json.loads(zh)):
+        assert json.loads(en) in catalogs['portal'],('portal API error',json.loads(en))
+for name,rows in catalogs.items():
+    for key,values in rows.items():
+        digits=re.findall(r'[0-9]+',values[0])
+        assert not digits or all(re.findall(r'[0-9]+',v)==digits for v in values),(name,key,'numeric limits differ')
+print('PASS: static portal labels, API-error arrays and numeric limits')

@@ -166,8 +166,8 @@
     "Connexion",
     "Verbindung",
     "Подключение",
-    "接続方式",
-    "연결 방식"
+    "接続状態",
+    "연결 상태"
   ],
   "Serial number": [
     "序列号",
@@ -422,12 +422,12 @@
   "Remember encrypted password": [
     "加密保存",
     "加密儲存",
-    "Remember",
-    "Mémoriser",
-    "Merken",
-    "Запомнить",
-    "保存する",
-    "암호 저장"
+    "Save encrypted",
+    "Mémoriser chiffré",
+    "Verschl. speichern",
+    "Хранить шифр.",
+    "暗号化して保存",
+    "암호화 저장"
   ],
   "Password": [
     "密码",
@@ -812,12 +812,12 @@
   "Invalid or oversized configuration.": [
     "配置不完整或超出设备限制。",
     "配置不完整或超出設備限制。",
-    "Invalid or oversized configuration.",
-    "Configuration invalide ou trop volumineuse.",
-    "Konfiguration ungültig oder zu groß.",
-    "Настройки неверны или слишком велики.",
-    "設定が無効、または大きすぎます。",
-    "설정이 잘못되었거나 너무 큽니다."
+    "Configuration incomplete or over device limits.",
+    "Configuration incomplète ou limites de l’appareil dépassées.",
+    "Konfiguration unvollständig oder Gerätelimit überschritten.",
+    "Настройки неполны или превышают лимиты устройства.",
+    "設定が不完全、またはデバイスの上限を超えています。",
+    "설정이 불완전하거나 장치 한도를 초과했습니다."
   ],
   "Check setting ranges.": [
     "请检查设置的范围。",
@@ -891,13 +891,13 @@
   ],
   "Firmware failed.": [
     "固件升级失败。",
-    "固件升級失敗。",
-    "Firmware failed.",
-    "Échec du micrologiciel.",
-    "Firmware fehlgeschlagen.",
-    "Ошибка прошивки.",
-    "ファームウェア処理に失敗しました。",
-    "펌웨어 처리 실패."
+    "韌體升級失敗。",
+    "Firmware update failed.",
+    "Échec de la mise à jour du micrologiciel.",
+    "Firmware-Update fehlgeschlagen.",
+    "Ошибка обновления прошивки.",
+    "ファームウェアの更新に失敗しました。",
+    "펌웨어 업데이트에 실패했습니다."
   ],
   "Choose ESP32 application firmware.": [
     "请选择ESP32应用固件。",
@@ -1362,12 +1362,12 @@
   "Save password": [
     "保存密码并重新登录",
     "保存密碼並重新登錄",
-    "Save password",
-    "Enregistrer le mot de passe",
-    "Passwort speichern",
-    "Сохранить пароль",
-    "パスワードを保存",
-    "비밀번호 저장"
+    "Save & sign in",
+    "Sauver et reconnecter",
+    "Speichern & anmelden",
+    "Сохранить и войти",
+    "保存して再ログイン",
+    "저장 후 재로그인"
   ],
   "Devices": [
     "设备管理",
@@ -1495,7 +1495,7 @@
     "Wake when printing starts",
     "Réveil au début de l’impression",
     "Bei Druckbeginn aufwecken",
-    "Включать экран при печати",
+    "Будить при начале печати",
     "印刷開始時に画面を点灯",
     "인쇄 시작 시 화면 켜기"
   ],
@@ -1568,5 +1568,95 @@
     "Инструкция Token",
     "Token の取得方法",
     "Token 받기 안내"
+  ],
+  "Connection type": [
+    "连接方式",
+    "連接方式",
+    "Connection type",
+    "Type de connexion",
+    "Verbindungsart",
+    "Тип подключения",
+    "接続方式",
+    "연결 방식"
+  ],
+  "Sign-in required": [
+    "需登录",
+    "需登入",
+    "Sign-in required",
+    "Connexion requise",
+    "Anmeldung nötig",
+    "Нужен вход",
+    "ログインが必要",
+    "로그인 필요"
+  ],
+  "Simulator tools enabled": [
+    "模拟器测试入口已开启",
+    "模擬器測試入口已開啟",
+    "Simulator tools enabled",
+    "Outils de simulation activés",
+    "Simulatorfunktionen aktiviert",
+    "Инструменты симулятора включены",
+    "シミュレータ機能が有効です",
+    "시뮬레이터 도구가 활성화되었습니다"
+  ],
+  "Simulator": [
+    "模拟器",
+    "模擬器",
+    "Simulator",
+    "Simulateur",
+    "Simulator",
+    "Симулятор",
+    "シミュレータ",
+    "시뮬레이터"
+  ],
+  "Select virtual devices, then save & restart.": [
+    "已获取虚拟设备，请勾选并保存。",
+    "已取得虛擬裝置，請勾選並儲存。",
+    "Virtual devices found. Select and save.",
+    "Appareils virtuels trouvés. Sélectionnez et enregistrez.",
+    "Virtuelle Geräte gefunden. Auswählen und speichern.",
+    "Виртуальные устройства найдены. Выберите и сохраните.",
+    "仮想デバイスを取得しました。選択して保存してください。",
+    "가상 장치를 찾았습니다. 선택 후 저장하세요."
+  ],
+  "Local simulator only. Fixed test credentials; no Bambu tokens or passwords are sent.": [
+    "仅连接局域网模拟器，使用固定测试凭据，不发送拓竹 Token 或密码。",
+    "僅連接區域網模擬器，使用固定測試憑證，不傳送拓竹 Token 或密碼。",
+    "Local simulator only. Fixed test credentials; no Bambu tokens or passwords are sent.",
+    "Simulateur LAN uniquement. Identifiants de test fixes ; aucun token ni mot de passe Bambu envoyé.",
+    "Nur LAN-Simulator. Feste Testzugangsdaten; keine Bambu-Token oder Passwörter werden gesendet.",
+    "Только LAN-симулятор. Фиксированные тестовые данные; токены и пароли Bambu не передаются.",
+    "LAN内のシミュレータ専用です。固定のテスト認証を使用し、Bambuのトークンやパスワードは送信しません。",
+    "LAN 시뮬레이터 전용입니다. 고정 테스트 인증을 사용하며 Bambu 토큰이나 비밀번호는 전송하지 않습니다."
+  ],
+  "Simulator IP": [
+    "模拟器 IP",
+    "模擬器 IP",
+    "Simulator IP",
+    "IP du simulateur",
+    "Simulator-IP",
+    "IP симулятора",
+    "シミュレータ IP",
+    "시뮬레이터 IP"
+  ],
+  "Discover virtual devices": [
+    "获取虚拟设备",
+    "取得虛擬裝置",
+    "Discover virtual devices",
+    "Détecter les appareils virtuels",
+    "Virtuelle Geräte suchen",
+    "Найти виртуальные устройства",
+    "仮想デバイスを検索",
+    "가상 장치 검색"
+  ],
+  "Add MQTT simulator": [
+    "添加 MQTT 模拟器",
+    "新增 MQTT 模擬器",
+    "Add MQTT simulator",
+    "Ajouter un simulateur MQTT",
+    "MQTT-Simulator hinzufügen",
+    "Добавить MQTT-симулятор",
+    "MQTTシミュレータを追加",
+    "MQTT 시뮬레이터 추가"
   ]
 }

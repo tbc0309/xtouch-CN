@@ -43,7 +43,7 @@ void onHomeControllerPlayPause(lv_event_t *e)
 void onHomeControllerStopConfirm() { lv_msg_send(XTOUCH_COMMAND_STOP, NULL); }
 void onHomeControllerStop(lv_event_t *e)
 {
-    ui_confirmPanel_show(XTOUCH_TEXT_CANCEL_PRINT, onHomeControllerStopConfirm);
+    ui_confirmPanel_show_danger(XTOUCH_TEXT_CANCEL_PRINT, onHomeControllerStopConfirm);
 }
 void onHomeSpeedSelection(lv_event_t *e) {}
 void onHomeLight(lv_event_t *e) { lv_msg_send(XTOUCH_COMMAND_LIGHT_TOGGLE, NULL); }

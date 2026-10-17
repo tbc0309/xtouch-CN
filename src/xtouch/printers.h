@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #define XTOUCH_MAX_PRINTERS 100
 
@@ -17,6 +18,7 @@ bool xtouch_printer_request(uint8_t slot);
 bool xtouch_printer_switch_pending(void);
 bool xtouch_printer_online(void);
 bool xtouch_printer_cloud(void);
+bool xtouch_printer_camera_credentials(char *host,size_t hostSize,char *code,size_t codeSize);
 // 0: LAN, 1: imported token, 2: account sign-in.
 uint8_t xtouch_printer_source(uint8_t slot);
 int xtouch_printer_cloud_health(uint8_t slot);

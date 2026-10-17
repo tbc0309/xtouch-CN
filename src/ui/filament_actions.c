@@ -131,7 +131,8 @@ bool ui_filament_allowed(unsigned action, int tray) {
         return false;
     int current = ui_filament_current(tray);
     if (action == UI_FILAMENT_REREAD)
-        return tray < XTOUCH_MAX_AMS_SLOTS && current == 255;
+        return tray < XTOUCH_MAX_AMS_SLOTS && current == 255 &&
+               bambuStatus.ams_kind[tray / 4] != 2 && bambuStatus.ams_kind[tray / 4] != 5;
     if (action == UI_FILAMENT_UNLOAD)
         return current == tray ||
                (tray == 254 && current == 255 && bambuStatus.hw_switch_state == 1);
@@ -164,22 +165,25 @@ static void confirm_action(void) {
     lv_msg_send(XTOUCH_COMMAND_FILAMENT_ACTION, &pending);
 }
 void ui_filament_report_status(unsigned status) {
-    const char *zh[] = {"请求已发送，等待设备响应", "设备已接受请求", "等待超时，请检查设备状态"};
-    const char *en[] = {"Request sent. Waiting for device.", "Device accepted the request.",
-                        "Timed out. Check the device state."};
-    if (status < 3)
-        ui_notice_show(xtouch_local(zh[status], en[status]), status == 2 ? 0 : 1800);
+    // Sending/accepting is not completion. Let the live device state speak.
+    if (status == 2)
+        ui_notice_show(xtouch_local("等待超时，请检查设备状态","Timed out. Check the device state."),0);
 }
+void ui_filament_report_rejection(uint32_t error, bool authorization) {
+    char prompt[240];
+    if(error==84033543UL)snprintf(prompt,sizeof(prompt),"%s",XTOUCH_TEXT_CONTROL_AUTH_ERROR);
+    else {
+        if(error)snprintf(prompt,sizeof(prompt),XTOUCH_TEXT_CONTROL_ERROR,(unsigned)error);
+        else snprintf(prompt,sizeof(prompt),"%s",xtouch_local("控制请求被拒绝","Control request rejected."));
+        if(authorization){const char *hint=strchr(XTOUCH_TEXT_CONTROL_AUTH_ERROR,'\n');size_t n=strlen(prompt);snprintf(prompt+n,sizeof(prompt)-n,"\n%s",hint?hint+1:XTOUCH_TEXT_CONTROL_AUTH_ERROR);}
+    }
+    ui_notice_show_kind(prompt,authorization?4000:0,authorization?UI_MESSAGE_WARNING:UI_MESSAGE_ERROR);
+}
+void ui_filament_report_send_failed(void){ui_notice_show(xtouch_local("控制请求发送失败，请检查连接","Request could not be sent. Check the connection."),0);}
 void ui_filament_report_error(uint32_t error) {
-    if (!error)
-        return;
-    char prompt[180];
-    if (error == 84033543UL)
-        snprintf(prompt, sizeof(prompt), "%s", XTOUCH_TEXT_CONTROL_AUTH_ERROR);
-    else
-        snprintf(prompt, sizeof(prompt), XTOUCH_TEXT_CONTROL_ERROR, (unsigned)error);
-    ui_notice_show(prompt, 0);
+    if(error)ui_filament_report_rejection(error,error==84033543UL);
 }
+
 void ui_filament_request_action(unsigned action) {
     int tray = ui_filament_selected();
     if (!ui_filament_allowed(action, tray))

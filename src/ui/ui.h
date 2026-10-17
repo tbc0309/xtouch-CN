@@ -9,6 +9,7 @@ extern "C"
 #endif
 
 #include "xtouch/types.h"
+#include "layout_shared.h"
 
 #if defined __has_include
 #if __has_include("lvgl.h")

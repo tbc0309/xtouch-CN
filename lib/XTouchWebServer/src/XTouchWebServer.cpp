@@ -219,7 +219,7 @@ String XTouchWebServer::_getRandomHexString() {
   char buffer[33];  // buffer to hold 32 Hex Digit + /0
   int i;
   for(i = 0; i < 4; i++) {
-    sprintf (buffer + (i*8), "%08x", esp_random());
+    sprintf (buffer + (i*8), "%08x", (unsigned)esp_random());
   }
   return String(buffer);
 }

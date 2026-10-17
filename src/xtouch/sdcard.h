@@ -1,12 +1,19 @@
 #ifndef _XLCD_SDCARD
 #define _XLCD_SDCARD
-#include <SD.h>
+#include "xtouch/card_fs.h"
+#include "firmware_target.h"
 #include "storage.h"
+#ifdef XTOUCH_WAVESHARE
+#include "board.h"
+#endif
 
 static bool xtouch_sdcard_firmware_waiting = false;
 
 static bool xtouch_sdcard_probe()
 {
+#ifdef XTOUCH_WAVESHARE
+    return true;
+#else
     // The board has no card-detect pin. One bounded CMD0 avoids the SD
     // library's repeated 100ms delays on every empty-slot poll.
     constexpr uint8_t chipSelect = 5;
@@ -24,12 +31,17 @@ static bool xtouch_sdcard_probe()
     SPI.transfer(0xff);
     SPI.endTransaction();
     return response == 1;
+#endif
 }
 
 bool xtouch_sdcard_setup()
 {
     if (!xtouch_sdcard_probe()) return false;
+#ifdef XTOUCH_WAVESHARE
+    bool available = board_card_begin() && SD.cardType() != CARD_NONE;
+#else
     bool available = SD.begin() && SD.cardType() != CARD_NONE;
+#endif
     if (!available) SD.end();
     xtouch_storage_set_sd(available);
     if (available) {
@@ -57,7 +69,8 @@ void xtouch_sdcard_poll(bool runtime = true)
     xtouch_storage_sync(runtime);
     if (runtime && SD.exists("/firmware.bin")) {
         File firmware = SD.open("/firmware.bin", FILE_READ);
-        xtouch_sdcard_firmware_waiting = firmware && firmware.size() > 0 && firmware.size() <= 1966080 && firmware.peek() == 0xE9;
+        uint8_t imageHeader[36]={0};size_t headerSize=firmware?firmware.read(imageHeader,sizeof(imageHeader)):0;
+        xtouch_sdcard_firmware_waiting = firmware && firmware.size() <= XTOUCH_FIRMWARE_MAX_BYTES && xtouch_firmware_header_valid(imageHeader,headerSize);
         firmware.close();
     }
 }

@@ -15,6 +15,8 @@ bool hms_health_truncated(void);
 bool hms_has_pending(void);
 void hms_dismiss(void);
 uint32_t hms_revision(void);
+unsigned hms_popup_timeout_ms(void);
+bool hms_command_verification_failed(void);
 #ifdef XTOUCH_ERROR_SELFTEST
 bool hms_selftest(void);
 #endif

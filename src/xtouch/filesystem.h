@@ -2,7 +2,7 @@
 #define _XLCD_SD
 
 #include "FS.h"
-#include "SD.h"
+#include "card_fs.h"
 #include <ArduinoJson.h>
 #include <Arduino.h>
 

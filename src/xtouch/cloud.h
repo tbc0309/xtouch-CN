@@ -5,6 +5,8 @@
 // One active account and one bounded API job. Remembered passwords use the device vault.
 bool xtouch_cloud_select(const char *accountId);
 const char *xtouch_cloud_broker();
+bool xtouch_cloud_simulator();
+uint16_t xtouch_cloud_port();
 const char *xtouch_cloud_user();
 const char *xtouch_cloud_token();
 const char *xtouch_cloud_error();

@@ -1,5 +1,6 @@
 #include "printer_models.h"
 #include <string.h>
+#include <ctype.h>
 extern const lv_img_dsc_t printer_image_BL_P001;
 extern const lv_img_dsc_t printer_image_BL_P002;
 extern const lv_img_dsc_t printer_image_C11;
@@ -33,11 +34,16 @@ static const PrinterModel models[] = {
 {"O1E", "Bambu Lab H2D Pro", &printer_image_O1E, true},
 {"O1S", "Bambu Lab H2S", &printer_image_O1S, true},
 };
+static bool model_name_equal(const char *a,const char *b){
+ while(*a||*b){while(*a==' ')a++;while(*b==' ')b++;if(tolower((unsigned char)*a)!=tolower((unsigned char)*b))return false;if(!*a)return true;a++;b++;}return true;
+}
 const char *ui_printer_model_code(const char *value) {
  if (!value) return "";
+ if(!strcmp(value,"O2D"))return "O1E";
+ if(model_name_equal(value,"X1C"))return "BL-P001";
  if (!strcmp(value,"3DPrinter-X1")) return "BL-P002";
  if (!strcmp(value,"3DPrinter-X1-Carbon")) return "BL-P001";
- for (unsigned i=0;i<sizeof(models)/sizeof(models[0]);++i) if (!strcmp(value,models[i].code) || !strcmp(value,models[i].name)) return models[i].code;
+ for (unsigned i=0;i<sizeof(models)/sizeof(models[0]);++i) if (!strcmp(value,models[i].code) || !strcmp(value,models[i].name) || model_name_equal(value,models[i].name+10)) return models[i].code;
  return "";
 }
 const char *ui_printer_model_short_name(const char *value) {

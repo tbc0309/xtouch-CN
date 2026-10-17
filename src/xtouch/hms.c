@@ -5,10 +5,14 @@ static uint32_t print_error,revision;
 static uint64_t health[HMS_MAX_CODES];
 static unsigned health_count;
 static bool pending,truncated;
-void hms_reset(void){print_error=health_count=0;pending=truncated=false;++revision;}
+static bool authorization_seen;
+static bool authorization_health(uint64_t code){return code==0x0500050000010007ULL;}
+static void notify_authorization(void){if(!authorization_seen){authorization_seen=true;pending=true;}}
+void hms_reset(void){print_error=health_count=0;pending=truncated=authorization_seen=false;++revision;}
 bool hms_set_print_error(uint32_t code){
  if(code==print_error)return false;print_error=code;++revision;
- if(code)pending=true;if(!code&&!health_count)pending=false;return true;
+ if(code==84033543UL)notify_authorization();else if(code)pending=true;
+ if(!code&&!health_count)pending=false;return true;
 }
 bool hms_set_health(const uint64_t *codes,unsigned count,bool overflow){
  uint64_t next[HMS_MAX_CODES];unsigned used=0;if(count&&!codes)return false;
@@ -18,7 +22,7 @@ bool hms_set_health(const uint64_t *codes,unsigned count,bool overflow){
   memmove(next+at+1,next+at,(used-at)*sizeof(*next));next[at]=code;++used;
  }
  if(used==health_count&&overflow==truncated&&!memcmp(next,health,used*sizeof(*next)))return false;
- for(unsigned i=0;i<used;++i){bool found=false;for(unsigned j=0;j<health_count;++j)if(next[i]==health[j]){found=true;break;}if(!found)pending=true;}
+ for(unsigned i=0;i<used;++i){bool found=false;for(unsigned j=0;j<health_count;++j)if(next[i]==health[j]){found=true;break;}if(!found){if(authorization_health(next[i]))notify_authorization();else pending=true;}}
  if(overflow&&!truncated)pending=true;
  memcpy(health,next,used*sizeof(*next));health_count=used;truncated=overflow;++revision;
  if(!print_error&&!used)pending=false;return true;
@@ -30,6 +34,16 @@ bool hms_health_truncated(void){return truncated;}
 bool hms_has_pending(void){return pending;}
 void hms_dismiss(void){pending=false;}
 uint32_t hms_revision(void){return revision;}
+unsigned hms_popup_timeout_ms(void){
+ // Only known informational telemetry may disappear on a timer. Unknown
+ // levels, truncation and task-stopping/pausing faults require local dismissal.
+ if(truncated)return 0;
+ if(print_error&&print_error!=84033543UL&&((print_error>>12)&15)!=12)return 0;
+ for(unsigned i=0;i<health_count;++i)if(!authorization_health(health[i])&&((health[i]>>16)&65535)!=3)return 0;
+ if(!print_error&&!health_count)return 0;
+ if(hms_command_verification_failed())return 4000;
+ return health_count+(print_error?1:0)>1?3000:2000;
+}
 #ifdef XTOUCH_ERROR_SELFTEST
 bool hms_selftest(void){
  hms_reset();uint64_t a[]={0x0500050000010007ULL,0x0300010000010001ULL};
@@ -44,3 +58,9 @@ bool hms_selftest(void){
  hms_reset();return true;
 }
 #endif
+
+bool hms_command_verification_failed(void){
+ if(print_error==84033543UL)return true;
+ for(unsigned i=0;i<health_count;i++)if(health[i]==0x0500050000010007ULL)return true;
+ return false;
+}

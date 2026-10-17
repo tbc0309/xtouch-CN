@@ -3,6 +3,11 @@
 #include <ctype.h>
 
 namespace XTouchSchema {
+inline bool labHost(const char *host) {
+    unsigned a,b,c,d; char extra;
+    if(!host || sscanf(host,"%u.%u.%u.%u%c",&a,&b,&c,&d,&extra)!=4 || a>255 || b>255 || c>255 || d>255)return false;
+    return a==10 || (a==172 && b>=16 && b<=31) || (a==192 && b==168);
+}
 inline bool text(JsonVariantConst value, size_t limit, bool required = false) {
     if (!value.is<const char *>())
         return !required && value.isNull();
@@ -23,6 +28,11 @@ inline bool asciiName(JsonVariantConst value) {
     return true;
 }
 inline bool account(JsonVariantConst a) {
+    if(a["simulator"].as<bool>())
+        return text(a["id"],32,true) && asciiName(a["name"]) && labHost(a["mqttHost"]|"") &&
+            a["mqttPort"].is<unsigned>() && a["mqttPort"].as<unsigned>()>0 && a["mqttPort"].as<unsigned>()<=65535 &&
+            !strcmp(a["token"]|"","xtouch-lab") && !strcmp(a["userId"]|"","xtouch-lab") &&
+            !a["rememberPassword"].as<bool>() && !strlen(a["passwordEnc"]|"") && !strlen(a["account"]|"");
     return a.is<JsonObjectConst>() && text(a["id"], 32, true) && text(a["token"], 2049) &&
            text(a["userId"], 48) && text(a["account"], 101) && text(a["name"], 64) &&
            text(a["passwordEnc"], 212) &&
@@ -76,8 +86,10 @@ inline bool root(JsonDocument &doc) {
         if (!strcmp(p["mode"] | "lan", "cloud")) {
             bool found = false;
             for (JsonVariantConst a : doc["cloudAccounts"].as<JsonArrayConst>())
-                if (!strcmp(a["id"], p["accountId"]))
+                if (!strcmp(a["id"], p["accountId"])) {
+                    if(a["simulator"].as<bool>() && strncmp(p["serialNumber"]|"","XTSIM",5))return false;
                     found = true;
+                }
             if (!found)
                 return false;
         }

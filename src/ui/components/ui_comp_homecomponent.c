@@ -1,3 +1,9 @@
+#include "../ui_profile.h"
+#if defined(XTOUCH_HAS_CAMERA) && XTOUCH_HAS_CAMERA
+#include <lvgl.h>
+#include "camera.h"
+static void cameraClick(lv_event_t *event){(void)event;xtouch_camera_open();}
+#endif
 #include <Arduino.h>
 #include <stdio.h>
 #include "../ui.h"
@@ -10,9 +16,10 @@ LV_FONT_DECLARE(ui_font_tencent_w7_24);
 static void set_device_model(lv_obj_t *label)
 {
     const char *name=ui_printer_model_short_name(xtouch_printer_model_at(xtouch_printer_active()));
-    lv_point_t size;lv_txt_get_size(&size,name,LV_FONT_DEFAULT,0,0,LV_COORD_MAX,LV_TEXT_FLAG_EXPAND);
-    lv_obj_set_width(label,size.x>46?46:size.x);
     lv_label_set_text(label,name);
+    lv_obj_t *row=lv_obj_get_parent(label);
+    lv_obj_update_layout(row);
+    ui_layout_device_model(row);
 }
 static void device_model_updated(lv_event_t *e){set_device_model(lv_event_get_target(e));}
 
@@ -218,6 +225,15 @@ void onXTouchWifiSignal(lv_event_t *e)
     lv_obj_set_style_text_color(target, message->data < 50 ? lv_color_hex(0x2aff00) : lv_color_hex(0xff682a), LV_PART_MAIN | LV_STATE_DEFAULT);
 }
 
+static void printerSignal(lv_event_t *e){
+    lv_obj_t *label=lv_event_get_target(e);
+    char text[16];
+    if(bambuStatus.wifi_signal_valid)snprintf(text,sizeof(text),"%d",-bambuStatus.wifi_signal);
+    else snprintf(text,sizeof(text),"--");
+    lv_label_set_text(label,text);
+    ui_layout_status(lv_obj_get_parent(label));
+}
+
 void onXTouchIPCam(lv_event_t *e)
 {
 
@@ -259,7 +275,7 @@ void onXTouchPrintStatus(lv_event_t *e)
     lv_obj_t *target = lv_event_get_target(e);
     lv_obj_t **comp_homeComponent = lv_event_get_user_data(e);
 
-    ui_confirmPanel_hide(); // hide confirm panel if new data comes
+    ui_confirmPanel_state_changed(); // Cancel stale actions, retain result messages.
 
     char layerText[32];
     sprintf(layerText, "%d/%d", bambuStatus.current_layer, bambuStatus.total_layers);
@@ -399,7 +415,18 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_style_text_opa(cui_mainScreenStatusBar, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *cui_mainScreenWifiIcon;
-    cui_mainScreenWifiIcon = lv_label_create(cui_mainScreenStatusBar);
+    lv_obj_t *connection = lv_obj_create(cui_mainScreenStatusBar);
+    lv_obj_remove_style_all(connection);
+    lv_obj_set_size(connection,LV_SIZE_CONTENT,lv_pct(100));
+    lv_obj_set_flex_flow(connection,LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(connection,LV_FLEX_ALIGN_START,LV_FLEX_ALIGN_CENTER,LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(connection,2,0);
+    lv_obj_clear_flag(connection,LV_OBJ_FLAG_SCROLLABLE);
+#if defined(XTOUCH_HAS_CAMERA) && XTOUCH_HAS_CAMERA
+    lv_obj_add_flag(connection,LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(connection,cameraClick,LV_EVENT_CLICKED,NULL);
+#endif
+    cui_mainScreenWifiIcon = lv_label_create(connection);
     lv_obj_set_width(cui_mainScreenWifiIcon, LV_SIZE_CONTENT);  /// 50
     lv_obj_set_height(cui_mainScreenWifiIcon, LV_SIZE_CONTENT); /// 16
     lv_label_set_text(cui_mainScreenWifiIcon, "x");
@@ -407,10 +434,20 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_set_scrollbar_mode(cui_mainScreenWifiIcon, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_text_font(cui_mainScreenWifiIcon, &ui_font_xlcdmin, LV_PART_MAIN | LV_STATE_DEFAULT);
 
+    lv_obj_t *signal=lv_label_create(connection);
+    lv_obj_set_style_text_font(signal,&ui_font_tencent_w7_14,0);
+    char rssi[16];snprintf(rssi,sizeof(rssi),bambuStatus.wifi_signal_valid?"%d":"--",-bambuStatus.wifi_signal);
+    lv_label_set_text(signal,rssi);
+    lv_obj_t *badge=ui_layout_status_create(connection,cui_mainScreenWifiIcon,signal);
+    lv_obj_t *statusSpacer=lv_obj_create(cui_mainScreenStatusBar);lv_obj_remove_style_all(statusSpacer);lv_obj_set_size(statusSpacer,0,lv_pct(100));lv_obj_set_flex_grow(statusSpacer,1);lv_obj_clear_flag(statusSpacer,LV_OBJ_FLAG_CLICKABLE|LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_move_to_index(badge,0);lv_obj_add_flag(badge,LV_OBJ_FLAG_EVENT_BUBBLE);
+
+    lv_obj_add_event_cb(signal,printerSignal,LV_EVENT_MSG_RECEIVED,NULL);
+    lv_msg_subsribe_obj(XTOUCH_ON_WIFI_SIGNAL,signal,NULL);
     lv_obj_t *cui_mainScreenCameraIcon;
-    cui_mainScreenCameraIcon = lv_label_create(cui_mainScreenStatusBar);
+    cui_mainScreenCameraIcon = lv_label_create(connection);
     lv_obj_set_height(cui_mainScreenCameraIcon, LV_SIZE_CONTENT); /// 16
-    lv_obj_set_flex_grow(cui_mainScreenCameraIcon, 1);
+    lv_obj_set_width(cui_mainScreenCameraIcon,LV_SIZE_CONTENT);
     lv_label_set_text(cui_mainScreenCameraIcon, "y");
     lv_obj_clear_flag(cui_mainScreenCameraIcon, LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_CHAIN); /// Flags
     lv_obj_set_scrollbar_mode(cui_mainScreenCameraIcon, LV_SCROLLBAR_MODE_OFF);
@@ -445,7 +482,7 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     /* Four real AMS slots; device selection has its own card. */
     lv_obj_set_width(cui_mainScreenAMS, 0);
     lv_obj_set_flex_grow(cui_mainScreenWifiIcon, 0);
-    lv_obj_set_flex_grow(cui_mainScreenCameraIcon, 1);
+    lv_obj_set_flex_grow(cui_mainScreenCameraIcon, 0);
 
     lv_obj_t *cui_mainScreenAMSColor0;
     cui_mainScreenAMSColor0 = lv_obj_create(cui_mainScreenAMS);
@@ -857,16 +894,12 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_remove_style_all(modelRow);
     lv_obj_set_size(modelRow,64,22);
     lv_obj_clear_flag(modelRow,LV_OBJ_FLAG_CLICKABLE|LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_flex_flow(modelRow,LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(modelRow,LV_FLEX_ALIGN_CENTER,LV_FLEX_ALIGN_CENTER,LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(modelRow,2,0);
+    lv_obj_add_event_cb(modelRow,ui_layout_device_model_event,LV_EVENT_SIZE_CHANGED,NULL);
     lv_obj_t *deviceIcon = lv_label_create(modelRow);
     lv_label_set_text(deviceIcon, LV_SYMBOL_REFRESH);
     lv_obj_set_style_text_color(deviceIcon, lv_color_hex(0x59D5E8), 0);
     lv_obj_t *modelName=lv_label_create(modelRow);
-    lv_obj_set_width(modelName,46);
-    lv_label_set_long_mode(modelName,LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_style_text_align(modelName,LV_TEXT_ALIGN_CENTER,0);
+    lv_label_set_long_mode(modelName,LV_LABEL_LONG_CLIP);
     set_device_model(modelName);
     lv_obj_add_event_cb(modelName,device_model_updated,LV_EVENT_MSG_RECEIVED,NULL);
     lv_msg_subsribe_obj(XTOUCH_ON_MODEL,modelName,NULL);
@@ -1089,10 +1122,15 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
         }
     }
 
+    bool horizontal=!lv_obj_has_flag(cui_mainScreenChamberTemp,LV_OBJ_FLAG_HIDDEN);
+    ui_layout_temperature_setup(cui_mainScreenNozzleTemp,horizontal);
+    ui_layout_temperature_setup(cui_mainScreenBedTemp,horizontal);
+    ui_layout_temperature_setup(cui_mainScreenChamberTemp,true);
+
     // Keep the compact, square AMS indicators independent of name length.
     lv_obj_set_width(cui_mainScreenStatusBar, lv_pct(100));
     lv_obj_set_style_pad_column(cui_mainScreenStatusBar, 2, 0);
-    lv_obj_set_flex_grow(cui_mainScreenCameraIcon, 1);
+    lv_obj_set_flex_grow(cui_mainScreenCameraIcon, 0);
     lv_obj_set_width(cui_mainScreenCameraIcon, LV_SIZE_CONTENT);
     lv_obj_set_flex_grow(cui_mainScreenAMS, 0);
     lv_obj_set_size(cui_mainScreenAMS, 84, 16);
@@ -1183,6 +1221,11 @@ lv_obj_t *ui_homeComponent_create(lv_obj_t *comp_parent)
     lv_obj_add_event_cb(cui_mainScreenWifiIcon, onXTouchWifiSignal, LV_EVENT_MSG_RECEIVED, NULL);
     lv_msg_subsribe_obj(XTOUCH_ON_WIFI_SIGNAL, cui_mainScreenWifiIcon, NULL);
 
+#if defined(XTOUCH_HAS_CAMERA) && XTOUCH_HAS_CAMERA
+    lv_obj_add_flag(cui_mainScreenCameraIcon, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_add_flag(cui_mainScreenWifiIcon,LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_add_flag(signal,LV_OBJ_FLAG_EVENT_BUBBLE);
+#endif
     lv_obj_add_event_cb(cui_mainScreenCameraIcon, onXTouchIPCam, LV_EVENT_MSG_RECEIVED, NULL);
     lv_msg_subsribe_obj(XTOUCH_ON_IPCAM, cui_mainScreenCameraIcon, NULL);
 

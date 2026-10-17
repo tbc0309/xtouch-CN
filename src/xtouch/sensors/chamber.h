@@ -1,6 +1,12 @@
 #ifndef _XLCD_SENSORS_CHAMBER_TEMP
 #define _XLCD_SENSORS_CHAMBER_TEMP
 
+#ifdef XTOUCH_WAVESHARE
+inline void xtouch_chamber_timer_init() {}
+inline void xtouch_chamber_timer_create() {}
+inline void xtouch_chamber_timer_start() {}
+inline void xtouch_chamber_timer_stop() {}
+#else
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
@@ -69,4 +75,5 @@ void xtouch_chamber_timer_init()
     }
 }
 
+#endif // CYD external chamber sensor
 #endif

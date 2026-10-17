@@ -44,14 +44,14 @@ void ui_event_comp_settingsComponent_onTFTOFF(lv_event_t *e)
     if (event_code == LV_EVENT_VALUE_CHANGED)
     {
         uint32_t value = lv_slider_get_value(ui_settingsTFTOFFSlider);
-        lv_label_set_text_fmt(ui_settingsTFTOFFValue, "%dm", value);
+        lv_label_set_text_fmt(ui_settingsTFTOFFValue, "%dm", (int)value);
         if (value < XTOUCH_LCD_MIN_SLEEP_TIME)
         {
             lv_label_set_text(ui_settingsTFTOFFValue, XTOUCH_TEXT_OFF);
         }
         else
         {
-            lv_label_set_text_fmt(ui_settingsTFTOFFValue, "%dm", value);
+            lv_label_set_text_fmt(ui_settingsTFTOFFValue, "%dm", (int)value);
         }
     }
     if (event_code == LV_EVENT_RELEASED)
@@ -302,7 +302,7 @@ lv_obj_t *ui_settingsComponent_create(lv_obj_t *comp_parent)
     if (value < XTOUCH_LCD_MIN_SLEEP_TIME)
         lv_label_set_text(ui_settingsTFTOFFValue, XTOUCH_TEXT_OFF);
     else
-        lv_label_set_text_fmt(ui_settingsTFTOFFValue, "%dm", value);
+        lv_label_set_text_fmt(ui_settingsTFTOFFValue, "%dm", (int)value);
     lv_obj_set_style_text_font(ui_settingsTFTOFFValue, LV_FONT_DEFAULT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_left(ui_settingsTFTOFFValue, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_right(ui_settingsTFTOFFValue, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -647,18 +647,25 @@ lv_obj_t *ui_settingsComponent_create(lv_obj_t *comp_parent)
     // This device has no browser: show the complete project URL as a single line.
     lv_obj_t *projectRow = lv_obj_create(cui_settingsComponent);
     lv_obj_remove_style_all(projectRow);
-    lv_obj_set_size(projectRow, lv_pct(100), 30);
+    lv_obj_set_size(projectRow, lv_pct(100), 40);
     lv_obj_set_flex_flow(projectRow, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(projectRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(projectRow, 5, 0);
     lv_obj_clear_flag(projectRow, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(projectRow,lv_color_hex(0x222222),0);lv_obj_set_style_bg_opa(projectRow,LV_OPA_COVER,0);
+    lv_obj_set_style_radius(projectRow,8,0);lv_obj_set_style_pad_left(projectRow,12,0);lv_obj_set_style_pad_right(projectRow,12,0);lv_obj_set_style_pad_ver(projectRow,8,0);
+
     lv_obj_t *projectIcon = lv_img_create(projectRow);
     lv_img_set_src(projectIcon, &ui_img_github);
+    lv_obj_set_style_img_recolor(projectIcon,lv_color_white(),0);lv_obj_set_style_img_recolor_opa(projectIcon,LV_OPA_COVER,0);
     lv_obj_t *projectUrl = lv_label_create(projectRow);
     lv_obj_set_style_text_font(projectUrl, LV_FONT_DEFAULT, 0);
     lv_obj_set_style_text_color(projectUrl, lv_color_hex(0x9DD9FF), 0);
+    lv_obj_set_flex_grow(projectUrl,0);lv_obj_set_width(projectUrl,LV_SIZE_CONTENT);lv_obj_set_style_text_align(projectUrl,LV_TEXT_ALIGN_LEFT,0);
     lv_label_set_long_mode(projectUrl, LV_LABEL_LONG_CLIP);
     lv_label_set_text(projectUrl, "github.com/tbc0309/xtouch-CN");
+    if(lv_disp_get_hor_res(NULL)<=480){lv_obj_set_style_pad_hor(projectRow,4,0);lv_obj_set_style_pad_column(projectRow,4,0);}
+    lv_obj_add_event_cb(projectRow,ui_layout_project_event,LV_EVENT_SIZE_CHANGED,NULL);
 
     lv_obj_t *manageButton=lv_btn_create(cui_settingsComponent);
     lv_obj_set_size(manageButton,LV_PCT(100),40);

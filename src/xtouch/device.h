@@ -6,6 +6,8 @@
 
 #include <Arduino.h>
 #include "ui/filament_actions.h"
+#include "command_result.h"
+static String xtouch_filament_pending_sequence;
 
 #define XTOUCH_DEVICE_CONTROL_MOVE_SPEED_XY 3000
 #define XTOUCH_DEVICE_CONTROL_MOVE_SPEED_Z 1500
@@ -83,9 +85,13 @@ void xtouch_device_control_reply(JsonObjectConst report){
  char *end=NULL;uint32_t id=strtoul(sequence.c_str(),&end,10);
  if(!end||*end)return;
  for(auto &entry:xtouch_controls)if(entry.used&&entry.sequence==id&&!strcmp(entry.command,report["command"]|"")&&entry.printer==xtouch_printer_active()&&millis()-entry.sent<15000){
-  entry.used=false;const char *command=report["command"]|"";uint32_t error=report["err_code"]|0UL;
-  if(!error&&strcmp(report["result"]|"success","success"))error=1;
-  if(error&&!xtouch_device_scoped_command(command))ui_filament_report_error(error);
+  const char *command=report["command"]|"";uint32_t error=report["err_code"]|0UL;
+  XtouchReplyResult outcome=xtouch_reply_result(report["result"]|"",error);
+  if(outcome==XTOUCH_REPLY_WAIT&&!xtouch_reply_auth_failure(report["reason"]|"",error))return;
+  entry.used=false;
+  if(sequence==xtouch_filament_pending_sequence)return;
+  bool authorization=xtouch_reply_auth_failure(report["reason"]|"",error);
+  if((outcome==XTOUCH_REPLY_REJECTED||authorization)&&!xtouch_device_scoped_command(command))ui_filament_report_rejection(error,authorization);
   break;
  }
 }
@@ -287,9 +293,11 @@ void xtouch_device_onNozzleDown(lv_msg_t *m)
 
 /* Standard single-extruder AMS/external-spool protocol, matching Bambu Studio.
    https://github.com/bambulab/BambuStudio/blob/master/src/slic3r/GUI/DeviceManager.cpp */
-static String xtouch_filament_pending_sequence;
+
 static unsigned xtouch_filament_pending_printer;
 static unsigned long xtouch_filament_sent_at;
+static char xtouch_filament_pending_command[32];
+static int xtouch_filament_legacy_tray=-1;
 bool xtouch_command_pending(void){return xtouch_filament_pending_sequence.length()!=0;}
 String xtouch_device_filament_command(const struct ui_filament_request &request,
     const String &sequence=xtouch_device_next_sequence())
@@ -326,7 +334,8 @@ void xtouch_device_onIndexedNozzle(void *,lv_msg_t *message){
  else if(r.action==2||r.action==3){p["command"]="set_extrusion_length";p["extruder_index"]=r.index;p["length"]=r.action==2?10:-10;}
  else if(r.action==4||r.action==5){p["command"]=r.action==4?"holder_nozzle_refresh":"nozzle_info_confirm";p["id"]=r.target==255?255:r.target+16;}
  else {p["command"]="nozzle_holder_ctrl";p["action"]=r.action==6?0:r.action==7?1:2;}
- String result;serializeJson(doc,result);if(!xtouch_device_publish(result)){xtouch_filament_pending_sequence="";ui_filament_report_error(1);return;}ui_filament_report_status(0);
+ strlcpy(xtouch_filament_pending_command,p["command"]|"",sizeof(xtouch_filament_pending_command));xtouch_filament_legacy_tray=-1;
+ String result;serializeJson(doc,result);if(!xtouch_device_publish(result)){xtouch_filament_pending_sequence="";ui_filament_report_send_failed();return;}ui_filament_report_status(0);
 }
 void xtouch_device_onAmsDry(void *,lv_msg_t *message){
  if(!message||!message->payload||xtouch_filament_pending_sequence.length())return;
@@ -335,7 +344,8 @@ void xtouch_device_onAmsDry(void *,lv_msg_t *message){
  xtouch_filament_pending_sequence=xtouch_device_next_sequence();xtouch_filament_pending_printer=r.printer;xtouch_filament_sent_at=millis();
  p["sequence_id"]=xtouch_filament_pending_sequence;p["command"]="ams_filament_drying";p["ams_id"]=xtouch_ams_protocol_id(r.unit);
  p["mode"]=r.stop?0:1;p["temp"]=r.stop?0:r.temp;p["duration"]=r.stop?0:r.hours;p["humidity"]=0;p["rotate_tray"]=false;p["cooling_temp"]=r.stop?0:40;p["filament"]="";p["close_power_conflict"]=false;
- String result;serializeJson(doc,result);if(!xtouch_device_publish(result)){xtouch_filament_pending_sequence="";ui_filament_report_error(1);return;}ui_filament_report_status(0);
+ strlcpy(xtouch_filament_pending_command,p["command"]|"",sizeof(xtouch_filament_pending_command));xtouch_filament_legacy_tray=-1;
+ String result;serializeJson(doc,result);if(!xtouch_device_publish(result)){xtouch_filament_pending_sequence="";ui_filament_report_send_failed();return;}ui_filament_report_status(0);
 }
 void xtouch_device_onFilamentAction(void *subscription, lv_msg_t *message)
 {
@@ -349,8 +359,10 @@ void xtouch_device_onFilamentAction(void *subscription, lv_msg_t *message)
     xtouch_filament_pending_sequence=xtouch_device_next_sequence();
     xtouch_filament_pending_printer=request.printer;
     xtouch_filament_sent_at=millis();
+    strlcpy(xtouch_filament_pending_command,request.action==UI_FILAMENT_REREAD?"ams_get_rfid":"ams_change_filament",sizeof(xtouch_filament_pending_command));
+    xtouch_filament_legacy_tray=request.action==UI_FILAMENT_REREAD?request.tray:-1;
     if(!xtouch_device_publish(xtouch_device_filament_command(request,xtouch_filament_pending_sequence))){
-        xtouch_filament_pending_sequence="";ui_filament_report_error(1);return;
+        xtouch_filament_pending_sequence="";ui_filament_report_send_failed();return;
     }
     ui_filament_report_status(0);
 }
@@ -368,10 +380,29 @@ void xtouch_device_filament_reply(JsonObjectConst report)
         xtouch_filament_pending_printer!=xtouch_printer_active()) return;
     if (millis()-xtouch_filament_sent_at>15000) {xtouch_filament_pending_sequence="";return;}
     if (report["sequence_id"].as<String>()!=xtouch_filament_pending_sequence) return;
-    xtouch_filament_pending_sequence="";
-    uint32_t error=report["err_code"] | 0UL;
-    if(!error&&strcmp(report["result"]|"success","success"))error=1;
-    if (error) ui_filament_report_error(error);else ui_filament_report_status(1);
+    if(strcmp(report["command"]|"",xtouch_filament_pending_command))return;
+    uint32_t error=report["err_code"]|0UL;
+    XtouchReplyResult outcome=xtouch_reply_result(report["result"]|"",error);
+    bool authorization=xtouch_reply_auth_failure(report["reason"]|"",error);
+    if(outcome==XTOUCH_REPLY_WAIT&&!authorization)return;
+    bool idle=bambuStatus.print_status==XTOUCH_PRINT_STATUS_IDLE||bambuStatus.print_status==XTOUCH_PRINT_STATUS_FINISHED||bambuStatus.print_status==XTOUCH_PRINT_STATUS_FAILED;
+    bool unloaded=bambuStatus.m_tray_now==255&&!bambuStatus.tray_reading_bits&&!bambuStatus.extruder_busy;
+    for(unsigned n=0;n<bambuStatus.nozzle_count&&n<2;n++)if((bambuStatus.nozzle_loaded_valid&(1U<<n))&&bambuStatus.nozzle_loaded[n]!=255)unloaded=false;
+    if(outcome==XTOUCH_REPLY_REJECTED&&!strcmp(xtouch_filament_pending_command,"ams_get_rfid")&&
+       xtouch_printer_online()&&!xtouch_printer_switch_pending()&&!hms_command_verification_failed()&&
+       xtouch_rfid_legacy_allowed(xtouch_bblp_model(),xtouch_filament_legacy_tray,idle,unloaded,report["reason"]|"",error)){
+        int tray=xtouch_filament_legacy_tray;xtouch_filament_legacy_tray=-1;
+        xtouch_filament_pending_sequence=xtouch_device_next_sequence();xtouch_filament_sent_at=millis();
+        strlcpy(xtouch_filament_pending_command,"gcode_line",sizeof(xtouch_filament_pending_command));
+        StaticJsonDocument<256> request;request["print"]["command"]="gcode_line";
+        request["print"]["sequence_id"]=xtouch_filament_pending_sequence;
+        request["print"]["param"]=String("M620 R")+String(tray)+"\n";
+        String payload;serializeJson(request,payload);
+        if(xtouch_device_publish(payload))return;
+        error=1;outcome=XTOUCH_REPLY_REJECTED;
+    }
+    xtouch_filament_pending_sequence="";xtouch_filament_legacy_tray=-1;
+    if(outcome==XTOUCH_REPLY_REJECTED||authorization)ui_filament_report_rejection(error,authorization);else ui_filament_report_status(1);
 }
 
 void xtouch_device_command_ams_control(void *s, lv_msg_t *m)

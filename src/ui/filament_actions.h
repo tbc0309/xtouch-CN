@@ -14,6 +14,8 @@ bool ui_filament_is_loaded(int tray);
 int ui_filament_extruder(int tray);
 bool ui_filament_allowed(unsigned action, int tray);
 void ui_filament_report_error(uint32_t error);
+void ui_filament_report_send_failed(void);
+void ui_filament_report_rejection(uint32_t error, bool authorization);
 void ui_filament_report_status(unsigned status);
 void ui_filament_request_action(unsigned action);
 void ui_filament_refresh(lv_obj_t *component);

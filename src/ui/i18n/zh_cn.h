@@ -82,7 +82,7 @@
 #define XTOUCH_TEXT_FILAMENT_LOAD_CONFIRM_ZH "进料 %s？\n可能加热喷嘴并移动打印头"
 #define XTOUCH_TEXT_FILAMENT_UNLOAD_CONFIRM_ZH "退料 %s？\n仅退出当前已装入的耗材"
 #define XTOUCH_TEXT_FILAMENT_SET_TEMP_ZH "先设温度"
-#define XTOUCH_TEXT_CONTROL_AUTH_ERROR_ZH "错误码 84033543\n建议使用：开启局域网和开发者模式"
+#define XTOUCH_TEXT_CONTROL_AUTH_ERROR_ZH "错误码 84033543\n部分功能仅支持局域网模式，且开启开发者。"
 #define XTOUCH_TEXT_CONTROL_ERROR_ZH "控制命令被拒绝\n错误码 %u"
 
 #define XTOUCH_TEXT_UP_TO_DATE_ZH "已是最新版本"

@@ -101,6 +101,7 @@ extern "C"
         double chamber_target_temper;
         bool chamber_valid, chamber_target_valid;
         int wifi_signal;
+        bool wifi_signal_valid;
         int cooling_fan_speed;
         int big_fan1_speed;
         int big_fan2_speed;
@@ -134,6 +135,7 @@ extern "C"
         bool ams_tray_color_valid[XTOUCH_MAX_AMS_SLOTS];
         char ams_tray_material[XTOUCH_MAX_AMS_SLOTS][12];
         uint8_t ams_kind[XTOUCH_MAX_AMS_UNITS]; // 0 unknown, 1 AMS, 2 Lite, 3 Pro, 4 HT
+        uint8_t ams_module_kind[XTOUCH_MAX_AMS_UNITS]; // get_version may precede presence reports
         uint8_t ams_dry_status[XTOUCH_MAX_AMS_UNITS];
         uint8_t ams_bound_extruder[XTOUCH_MAX_AMS_UNITS];
         uint16_t ams_dry_valid;
@@ -171,7 +173,7 @@ extern "C"
 
     } XTouchBambuStatus;
 
-    XTouchBambuStatus bambuStatus;
+    extern XTouchBambuStatus bambuStatus;
 
     enum XTouchControlAxis
     {
@@ -187,7 +189,7 @@ extern "C"
         int target_nozzle_temper;
     } XtouchControlMode;
 
-    XtouchControlMode controlMode;
+    extern XtouchControlMode controlMode;
 
     typedef struct XTouchTouchConfigStruct
     {
@@ -209,7 +211,7 @@ extern "C"
         int currentScreenIndex;
     } XTouchConfig;
 
-    XTouchConfig xTouchConfig;
+    extern XTouchConfig xTouchConfig;
 
     typedef struct
     {

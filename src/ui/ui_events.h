@@ -27,7 +27,7 @@ extern "C"
     /* temps */
 
     void onTemperatureBed(const char *value);
-    void onTemperatureNozzle(int value);
+    void onTemperatureNozzle(int32_t value);
     void onTemperaturePart(lv_event_t *e);
     void onTemperatureAux(lv_event_t *e);
     void onTemperatureKeypad(lv_event_t *e);

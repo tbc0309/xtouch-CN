@@ -1,6 +1,7 @@
 #include "detail_page.h"
 static lv_obj_t *active;
 static int return_page;
+static void guard_contents(void *page){if(active==page)ui_text_guard_tree(active);}
 void ui_detail_page_end(bool restore) {
     if (!active)
         return;
@@ -36,7 +37,10 @@ lv_obj_t *ui_detail_page_begin(void) {
     lv_obj_set_style_bg_color(close, lv_color_hex(0x9D3434), 0);
     lv_obj_t *caption = lv_label_create(close);
     lv_label_set_text(caption, "X");
+    ui_layout_close(close,caption,&ui_font_xlcdmin);
+
     lv_obj_center(caption);
     lv_obj_add_event_cb(close, close_page, LV_EVENT_CLICKED, NULL);
+    lv_async_call(guard_contents,active);
     return active;
 }

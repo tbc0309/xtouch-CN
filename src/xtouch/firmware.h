@@ -3,7 +3,8 @@
 
 #include <Arduino.h>
 #include <Update.h>
-#include <SD.h>
+#include "xtouch/card_fs.h"
+#include "firmware_target.h"
 #include <stdio.h>
 // #include <semver.h>
 
@@ -62,9 +63,9 @@ static bool xtouch_firmware_manifest_valid(JsonDocument &doc)
     SemVer parsed;
     if (!parseSemVer(version, parsed) || strlen(md5) != 32 ||
         !String(url).startsWith("https://github.com/tbc0309/xtouch-CN/releases/download/") ||
-        !String(url).endsWith("/xtouch-2.8.bin") ||
+        !String(url).endsWith(XTOUCH_FIRMWARE_FILENAME) ||
         !doc["size"].is<unsigned>() || doc["size"].as<unsigned>() == 0 ||
-        doc["size"].as<unsigned>() > 1966080) return false;
+        doc["size"].as<unsigned>() > XTOUCH_FIRMWARE_MAX_BYTES) return false;
     for (unsigned i = 0; i < 32; i++) if (!isxdigit(md5[i])) return false;
     return true;
 }
@@ -141,7 +142,8 @@ void xtouch_firmware_checkFirmwareUpdate(void)
     File firmware = SD.open(xtouch_paths_firmware_ota_fw, FILE_READ);
     // Plain firmware.bin on SD remains supported; an OTA manifest, when present,
     // must be valid and match the complete image before touching flash.
-    bool valid = firmware && firmware.size() > 0 && firmware.size() <= 1966080 && firmware.peek() == 0xE9;
+    uint8_t imageHeader[36]={0};size_t headerSize=firmware?firmware.read(imageHeader,sizeof(imageHeader)):0;firmware.seek(0);
+    bool valid = firmware && firmware.size() <= XTOUCH_FIRMWARE_MAX_BYTES && xtouch_firmware_header_valid(imageHeader,headerSize);
     if (manifestPresent) valid = valid && verified && firmware.size() == doc["size"].as<unsigned>();
     if (valid && manifestPresent) {
         MD5Builder md5;

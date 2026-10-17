@@ -3,6 +3,7 @@
 #include "cloud_ca.h"
 #include "storage.h"
 #include "vault.h"
+#include "profile_schema.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <mbedtls/base64.h>
@@ -12,6 +13,9 @@
 
 namespace {
 String activeToken, activeUser, activeRegion, activeError;
+String labBroker;
+uint16_t labPort=8883;
+bool labActive=false;
 String jobInput, jobOutput;
 volatile bool running=false, pending=false;
 portMUX_TYPE jobMux=portMUX_INITIALIZER_UNLOCKED;
@@ -124,7 +128,7 @@ String executeJob() {
    (code==403&&check.indexOf("missing_cookie")>=0)?"csrf_required":
    code==401?"authentication_rejected":code==403?"cloud_forbidden":code==429?"cloud_rate_limited":"cloud_request_failed";
  }
- Serial.printf("[CLOUD] action=%s HTTP=%d responseBytes=%u heap=%u\n",mode.c_str(),code,unsigned(reply.length()),ESP.getFreeHeap());
+ Serial.printf("[CLOUD] action=%s HTTP=%d responseBytes=%u heap=%u\n",mode.c_str(),code,unsigned(reply.length()),unsigned(ESP.getFreeHeap()));
  if(out.overflowed()){out.clear();out["ok"]=false;out["error"]="response_too_large";}
  out["httpStatus"]=code;input.clear();wipe(token);wipe(reply);
  String result;serializeJson(out,result);out.clear();
@@ -132,16 +136,22 @@ String executeJob() {
 }
 void job(void *) {
  { String result=executeJob();jobOutput=std::move(result); }
- Serial.printf("[CLOUD] released heap=%u minStack=%u\n",ESP.getFreeHeap(),unsigned(uxTaskGetStackHighWaterMark(nullptr)));
+ Serial.printf("[CLOUD] released heap=%u minStack=%u\n",unsigned(ESP.getFreeHeap()),unsigned(uxTaskGetStackHighWaterMark(nullptr)));
  portENTER_CRITICAL(&jobMux);running=false;pending=false;jobFinished=millis();portEXIT_CRITICAL(&jobMux);
  vTaskDelete(nullptr);
 }
 }
 bool xtouch_cloud_select(const char *id) {
  wipe(activeToken);activeUser="";activeRegion="";activeError="";
+ labActive=false;labBroker="";labPort=8883;
  if(!id||!*id)return true;
  DynamicJsonDocument doc=xtouch_storage_read("/xtouch.json",0);
  for(JsonVariantConst account:doc["cloudAccounts"].as<JsonArrayConst>())if(!strcmp(account["id"]|"",id)) {
+  if(account["simulator"].as<bool>()){
+   if(!XTouchSchema::account(account)){activeError="invalid_configuration";return false;}
+   labBroker=account["mqttHost"].as<String>();labPort=account["mqttPort"].as<unsigned>();labActive=true;
+   activeUser="xtouch-lab";activeToken="xtouch-lab";return true;
+  }
   if(account["rememberPassword"].as<bool>()&&strlen(account["passwordEnc"]|"")){
    String password;if(!xtouch_vault_open(account["passwordEnc"]|"",String(account["id"]|"")+":"+(account["region"]|"cn")+":"+(account["account"]|""),password)){activeError="password_key_changed";return false;}
   }
@@ -154,7 +164,9 @@ bool xtouch_cloud_select(const char *id) {
  if(activeToken.isEmpty()||activeUser.isEmpty())activeError="cloud_account_invalid";
  return activeError.isEmpty();
 }
-const char *xtouch_cloud_broker(){return activeRegion=="cn"?"cn.mqtt.bambulab.com":"us.mqtt.bambulab.com";}
+const char *xtouch_cloud_broker(){return labActive?labBroker.c_str():activeRegion=="cn"?"cn.mqtt.bambulab.com":"us.mqtt.bambulab.com";}
+bool xtouch_cloud_simulator(){return labActive;}
+uint16_t xtouch_cloud_port(){return labActive?labPort:8883;}
 const char *xtouch_cloud_user(){return activeUser.c_str();}
 const char *xtouch_cloud_token(){return activeToken.c_str();}
 const char *xtouch_cloud_error(){return activeError.c_str();}

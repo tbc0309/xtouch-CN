@@ -62,6 +62,17 @@ let lang = browserLanguage(navigator.languages?.[0] || navigator.language),
 // Invalidate asynchronous management work when authentication changes.
 let cleanState = "",
   sessionEpoch = 0;
+let labTools = false;
+function enableLabTools(e) {
+  if (!cfg || $("app").hidden) return;
+  if (e.ctrlKey && (e.key.toLowerCase() === "t" || (e.shiftKey && e.key.toLowerCase() === "y"))) {
+    e.preventDefault();
+    labTools = !labTools;
+    accounts();
+    message(labTools ? t("模拟器测试入口已开启", "Simulator tools enabled") : "");
+  }
+}
+document.addEventListener("keydown", enableLabTools);
 function collapseAccounts() {
   for (const a of cfg?.cloudAccounts || []) a.expanded = false;
 }
@@ -82,7 +93,7 @@ function enterLogin() {
   $("login").hidden = false;
   $("guestFeedback").append($("status"));
   message("");
-  for (const b of document.querySelectorAll("#addAccount,#save,#language"))
+  for (const b of document.querySelectorAll("#addAccount,#addSimulator,#save,#language"))
     b.disabled = false;
 }
 const $ = (id) => document.getElementById(id),
@@ -401,6 +412,7 @@ function select(parent, label, options, value, change) {
 }
 function source(p) {
   const a = cfg.cloudAccounts.find((a) => a.id === p.accountId);
+  if(a?.simulator) return {label:t("模拟器", "Simulator"),kind:"tokenSource"};
   return p.mode !== "cloud"
     ? { label: "LAN", kind: "lan" }
     : (a?.loginMethod || a?.authMode) === "password"
@@ -633,7 +645,7 @@ function editor() {
     const row = document.createElement("div");
     row.className = "deviceDetail";
     const caption = document.createElement("small");
-    caption.textContent = t("连接方式", "Connection");
+    caption.textContent = t("连接方式", "Connection type");
     const link = button(
       row,
       source(p).label +
@@ -680,7 +692,7 @@ function editor() {
       8,
     );
     input.placeholder = p.accessCodeSaved ? "••••••••" : "";
-    show(t("连接方式", "Connection"), t("局域网模式", "LAN mode"));
+    show(t("连接方式", "Connection type"), t("局域网模式", "LAN mode"));
   }
   if (!newProfiles.has(p))
     for (const input of grid.querySelectorAll("input,select"))
@@ -701,9 +713,52 @@ $("addPrinter").onclick = () => {
   newProfiles.add(cfg.printers[selected]);
   profiles();
 };
+async function discoverLab(a){
+  if(cloudBusy)return;
+  cloudBusy=true;
+  const epoch=sessionEpoch;
+  try{
+    const result=await api("/api/lab/discover",{host:a.mqttHost,port:Number(a.labHttpPort||8894)});
+    if(epoch!==sessionEpoch||!cfg)return;
+    a.devices=result.devices;a.token="xtouch-lab";a.userId="xtouch-lab";a.signedIn=true;a.verified=true;a.expanded=true;
+    message(t("已获取虚拟设备，请勾选并保存。", "Select virtual devices, then save & restart."));
+  }catch(e){if(epoch===sessionEpoch)message(failure(e),true);}
+  finally{cloudBusy=false;if(epoch===sessionEpoch&&cfg)accounts();}
+}
+function labAccount(body,a){
+  const note=document.createElement("p");note.className="subtle";note.textContent=t("仅连接局域网模拟器，使用固定测试凭据，不发送拓竹 Token 或密码。", "Local simulator only. Fixed test credentials; no Bambu tokens or passwords are sent.");body.append(note);
+  const grid=document.createElement("div");grid.className="grid";body.append(grid);
+  nameField(grid,t("备注", "Label"),a.name||a.id,v=>a.name=v);
+  field(grid,t("模拟器 IP", "Simulator IP"),a.mqttHost,v=>a.mqttHost=v,"text",63);
+  field(grid,"TLS MQTT port",a.mqttPort||8883,v=>a.mqttPort=Number(v),"number",5);
+  field(grid,"Web port",a.labHttpPort||8894,v=>a.labHttpPort=Number(v),"number",5);
+  button(body,t("获取虚拟设备", "Discover virtual devices"),()=>discoverLab(a));
+  for(const p of a.devices||cfg.printers.filter(p=>p.accountId===a.id)){
+    const row=document.createElement("label");row.className="checkbox deviceRow tokenSource";
+    const check=document.createElement("input");check.type="checkbox";check.checked=cfg.printers.some(x=>x.accountId===a.id&&x.serialNumber===p.serialNumber);
+    check.onchange=()=>{
+      if(check.checked){if(cfg.printers.length>=100){check.checked=false;return message(t("最多 100 台设备。", "Maximum 100 devices."));}
+        cfg.printers.push({name:p.name,serialNumber:p.serialNumber,printerModel:p.printerModel,mode:"cloud",accountId:a.id});
+      }else{const active=cfg.printers[cfg.activePrinter||0];cfg.printers=cfg.printers.filter(x=>!(x.accountId===a.id&&x.serialNumber===p.serialNumber));cfg.activePrinter=Math.max(0,cfg.printers.indexOf(active));}
+      profiles();editor();
+    };
+    row.append(check,icon("tokenSource"),document.createTextNode(deviceLabel(p)));body.append(row);
+  }
+}
 function accounts() {
   const root = $("accounts");
   root.replaceChildren();
+  $("addSimulator")?.remove();
+  if(labTools) {
+    const addSimulator = button($("accountActions"),t("添加 MQTT 模拟器", "Add MQTT simulator"),()=>{
+    if(cfg.cloudAccounts.length>=4)return message(t("最多 4 个账号。", "Maximum 4 accounts."));
+    let n=1;while(cfg.cloudAccounts.some(a=>a.id===`Lab-${n}`))n++;
+    cfg.cloudAccounts.push({id:`Lab-${n}`,name:`Lab-${n}`,simulator:true,mqttHost:"",mqttPort:8883,labHttpPort:8894,region:"cn",token:"xtouch-lab",userId:"xtouch-lab",signedIn:false,expanded:true});
+    accounts();
+    });
+    addSimulator.id = "addSimulator";
+    addSimulator.disabled = cloudBusy;
+  }
   cfg.cloudAccounts.forEach((a, i) => {
     const open = a.expanded === true,
       kind =
@@ -717,7 +772,7 @@ function accounts() {
     head.className = "accountHeader";
     card.append(head);
     const passwordState =
-      kind === "tokenSource"
+      a.simulator ? t("模拟器", "Simulator") : kind === "tokenSource"
         ? "Access Token"
         : a.passwordLocked
           ? t("重输密码", "Re-enter password")
@@ -752,7 +807,7 @@ function accounts() {
       "badge" + (a.verified || a.health === "valid" ? " ok" : "");
     badge.textContent =
       a.health === "invalid"
-        ? t("需登录", "Sign in")
+        ? t("需登录", "Sign-in required")
         : a.verified || a.health === "valid"
           ? t("有效", "Valid")
           : a.token || a.tokenSaved
@@ -762,7 +817,7 @@ function accounts() {
     const tools = document.createElement("div");
     tools.className = "accountTools";
     head.append(tools);
-    button(
+    if (!a.simulator) button(
       tools,
       t("清除登录", "Clear login"),
       () => {
@@ -805,6 +860,7 @@ function accounts() {
     toggle.setAttribute("aria-controls", body.id);
     body.hidden = !open;
     card.append(body);
+    if(a.simulator){labAccount(body,a);return;}
     const identity = document.createElement("div");
     identity.className = "grid";
     body.append(identity);
@@ -1070,12 +1126,13 @@ $("addAccount").onclick = () => {
 };
 // Cloud results belong to the session that started them, not the next login.
 async function cloud(a, input) {
+  if(a.simulator)return discoverLab(a);
   if (cloudBusy || !cfg || $("app").hidden) return;
   const epoch = sessionEpoch;
   const current = () => epoch === sessionEpoch && !!cfg && !$("app").hidden;
   cloudBusy = true;
   for (const b of document.querySelectorAll(
-    "#accounts button,#accounts input,#accounts select,#addAccount,#save,#language",
+    "#accounts button,#accounts input,#accounts select,#addAccount,#addSimulator,#save,#language",
   ))
     b.disabled = true;
   try {
@@ -1188,7 +1245,7 @@ async function cloud(a, input) {
       cloudBusy = false;
       updatePending();
       for (const b of document.querySelectorAll(
-        "#accounts button,#accounts input,#accounts select,#addAccount,#save,#language",
+        "#accounts button,#accounts input,#accounts select,#addAccount,#addSimulator,#save,#language",
       ))
         b.disabled = false;
     }

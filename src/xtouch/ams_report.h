@@ -91,6 +91,8 @@ static void xtouch_mqtt_parse_ams(JsonDocument &incomingJson) {
             }
             if (!ams.containsKey("ams_exist_bits"))
                 bambuStatus.ams_exist_bits |= 1ULL << id;
+            if(!bambuStatus.ams_kind[id]&&bambuStatus.ams_module_kind[id])
+                bambuStatus.ams_kind[id]=bambuStatus.ams_module_kind[id];
             if (id >= 4)
                 bambuStatus.ams_kind[id] = id == XTOUCH_MIXED_AMS_UNIT ? 5 : 4;
             if (unit.containsKey("info")) {

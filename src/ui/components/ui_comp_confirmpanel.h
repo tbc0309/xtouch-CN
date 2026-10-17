@@ -2,6 +2,7 @@
 #define _UI_COMP_CONFIRMPANEL_H
 
 #include "../ui.h"
+#include "../message_style.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -19,8 +20,13 @@ extern "C"
 #define _UI_COMP_CONFIRMPANEL_NUM 7
     lv_obj_t *ui_confirmPanel_create(lv_obj_t *comp_parent);
     void ui_confirmPanel_show(const char *title, void (*onYES)(void));
+    void ui_confirmPanel_show_danger(const char *title,void (*onYES)(void));
     void ui_confirmPanel_hide();
-    void ui_notice_show(const char *text,unsigned timeout);
+    void ui_confirmPanel_state_changed(void);
+    bool ui_notice_show(const char *text,unsigned timeout);
+    bool ui_notice_show_kind(const char *text,unsigned timeout,ui_message_kind kind);
+    void ui_notice_hide(void);
+    bool ui_notice_visible(void);
     void ui_notice_unavailable(void);
     void ui_confirmPanel_NOOP();
 #ifdef __cplusplus

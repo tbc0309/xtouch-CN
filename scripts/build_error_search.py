@@ -15,8 +15,8 @@ def build(output):
     # Protocol acknowledgement errors are separate from HMS/print-error tables.
     rows.append(dict(kind='command', code=f'{84033543:08X}', en='MQTT command verification failed.',
         zh='MQTT 命令验证失败。', models=[], hint=[
-        '建议在打印机开启局域网和开发者模式，并在 xTouch 中使用局域网设备连接。',
-        'Enable LAN-only and Developer Mode on the printer, then use a LAN profile in xTouch.']))
+        '部分功能仅支持局域网模式，且开启开发者。请在 xTouch 中使用局域网设备连接。',
+        'Some features need LAN + Dev mode. Use a LAN profile in xTouch.']))
     output.write_text(json.dumps(dict(rows=rows, source=data.get('source'), studioCommit=data.get('studioCommit')), ensure_ascii=False, separators=(',', ':')), 'utf-8')
     return len(rows)
 

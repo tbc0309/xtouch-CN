@@ -78,14 +78,14 @@ void xtouch_events_onChamberTempSwitch(lv_msg_t *m)
 
 void xtouch_setupGlobalEvents()
 {
-    lv_msg_subscribe(XTOUCH_SETTINGS_RESET_DEVICE, (lv_msg_subscribe_cb_t)xtouch_events_onResetDevice, NULL);
-    lv_msg_subscribe(XTOUCH_SETTINGS_BACKLIGHT, (lv_msg_subscribe_cb_t)xtouch_events_onBackLight, NULL);
-    lv_msg_subscribe(XTOUCH_SETTINGS_BACKLIGHT_SET, (lv_msg_subscribe_cb_t)xtouch_events_onBackLightSet, NULL);
-    lv_msg_subscribe(XTOUCH_SETTINGS_TFTOFF_SET, (lv_msg_subscribe_cb_t)xtouch_events_onTFTTimerSet, NULL);
-    lv_msg_subscribe(XTOUCH_SETTINGS_TFT_INVERT, (lv_msg_subscribe_cb_t)xtouch_events_onTFTInvert, NULL);
-    lv_msg_subscribe(XTOUCH_SETTINGS_SAVE, (lv_msg_subscribe_cb_t)xtouch_events_onSettingsSave, NULL);
-    lv_msg_subscribe(XTOUCH_SETTINGS_CHAMBER_TEMP, (lv_msg_subscribe_cb_t)xtouch_events_onChamberTempSwitch, NULL);
-    lv_msg_subscribe(XTOUCH_SETTINGS_TFT_FLIP, (lv_msg_subscribe_cb_t)xtouch_events_onTFTFlip, NULL);
+    lv_msg_subscribe(XTOUCH_SETTINGS_RESET_DEVICE, xtouch_message_callback<xtouch_events_onResetDevice>, NULL);
+    lv_msg_subscribe(XTOUCH_SETTINGS_BACKLIGHT, xtouch_message_callback<xtouch_events_onBackLight>, NULL);
+    lv_msg_subscribe(XTOUCH_SETTINGS_BACKLIGHT_SET, xtouch_message_callback<xtouch_events_onBackLightSet>, NULL);
+    lv_msg_subscribe(XTOUCH_SETTINGS_TFTOFF_SET, xtouch_message_callback<xtouch_events_onTFTTimerSet>, NULL);
+    lv_msg_subscribe(XTOUCH_SETTINGS_TFT_INVERT, xtouch_message_callback<xtouch_events_onTFTInvert>, NULL);
+    lv_msg_subscribe(XTOUCH_SETTINGS_SAVE, xtouch_message_callback<xtouch_events_onSettingsSave>, NULL);
+    lv_msg_subscribe(XTOUCH_SETTINGS_CHAMBER_TEMP, xtouch_message_callback<xtouch_events_onChamberTempSwitch>, NULL);
+    lv_msg_subscribe(XTOUCH_SETTINGS_TFT_FLIP, xtouch_message_callback<xtouch_events_onTFTFlip>, NULL);
 }
 
 #endif

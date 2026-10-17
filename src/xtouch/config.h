@@ -28,6 +28,18 @@ static uint8_t xtouch_active_printer = 0;
 static int xtouch_pending_printer = -1;
 static bool xtouch_profiles_loaded = false;
 
+bool xtouch_printer_camera_credentials(char *host,size_t hostSize,char *code,size_t codeSize){
+ if(!host||!code||hostSize<2||codeSize<9||!xtouch_printers||!xtouch_profile_capacity)return false;
+ host[0]=code[0]=0;const auto &active=xtouch_printers[xtouch_active_printer];
+ for(unsigned pass=0;pass<=xtouch_profile_capacity;++pass){unsigned slot=pass?pass-1:xtouch_active_printer;const auto &candidate=xtouch_printers[slot];
+  if(!candidate.configured||strcmp(candidate.serialNumber,active.serialNumber)||strlen(candidate.accessCode)!=8)continue;
+  unsigned a,b,c,d;char tail;if(sscanf(candidate.host,"%u.%u.%u.%u%c",&a,&b,&c,&d,&tail)!=4||a>255||b>255||c>255||d>255)continue;
+  if(!(a==10||(a==172&&b>=16&&b<=31)||(a==192&&b==168)))continue;
+  strlcpy(host,candidate.host,hostSize);strlcpy(code,candidate.accessCode,codeSize);return true;
+ }
+ return false;
+}
+
 bool xtouch_printer_cloud(void) { return xtouch_printers && xtouch_profile_capacity && xtouch_printers[xtouch_active_printer].cloud; }
 
 uint8_t xtouch_printer_source(uint8_t slot) { return xtouch_printer_configured(slot)?xtouch_printers[slot].source:0; }
