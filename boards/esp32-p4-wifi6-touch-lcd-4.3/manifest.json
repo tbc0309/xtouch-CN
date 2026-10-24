@@ -1,0 +1,12 @@
+{
+  "flashBytes": 33554432,
+  "applicationSlotBytes": 12582912,
+  "chip": "esp32p4",
+  "version": "1.0.0",
+  "application": "esp32-p4-wifi6-touch-lcd-4.3.bin",
+  "fullImage": "esp32-p4-wifi6-touch-lcd-4.3-full.bin",
+  "applicationBytes": 4349728,
+  "applicationOffset": 131072,
+  "sha256": "4021bd526d2a1e731d3210f323ff042868b9f93568ba99b8d5001ef1e2f4d496",
+  "fullSha256": "c2af78579c4e08fa9cddf0a37411ec5c217098b5c9ae17e2c481906181483ad9"
+}
